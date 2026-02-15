@@ -1,3 +1,10 @@
+so far we used these modules
+
+npm i @shadergradient/react @react-three/fiber three three-stdlib camera-controls
+npm i -D @types/three
+
+
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
