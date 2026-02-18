@@ -4,7 +4,7 @@ import { ShaderGradientCanvas, ShaderGradient } from '@shadergradient/react'
 
 export default function Background() {
   return (
-    <div className="absolute inset-0 -z-10 pointer-events-none">
+    <div className="fixed inset-0 -z-50 pointer-events-none">
       <div className="w-full h-full">
         <ShaderGradientCanvas>
             <ShaderGradient
@@ -14,9 +14,9 @@ export default function Background() {
                 bgColor2="#000000"
                 brightness={1.2}
                 cAzimuthAngle={180}
-                cDistance={2.4}
+                cDistance={3.5}
                 cPolarAngle={95}
-                cameraZoom={1}
+                cameraZoom={0.9}
                 color1="#121417"
                 color2="#297356"
                 color3="#19332C"
@@ -31,7 +31,7 @@ export default function Background() {
                 lightType="3d"
                 pixelDensity={1}
                 positionX={0}
-                positionY={-2.1}
+                positionY={-0.7}
                 positionZ={0}
                 range="disabled"
                 rangeEnd={40}
