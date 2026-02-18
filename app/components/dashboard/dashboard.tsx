@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import React, { useState, useEffect, useRef } from "react"
 import "./dashboard.css"
 
 function StatCard({ title, value, delta }: { title: string; value: string; delta?: string }) {
@@ -73,9 +73,42 @@ export default function Dashboard() {
     const days = Array.from({ length: 35 }, (_, i) => i + 1)
     const pending = new Set([2, 10, 17])
     const confirmed = new Set([8, 15, 22])
+    const [selected, setSelected] = useState<number | null>(null)
+    const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null)
+    const containerRef = useRef<HTMLDivElement | null>(null)
+
+    useEffect(() => {
+      function handlePointer(e: PointerEvent) {
+        if (!containerRef.current) return
+        // only auto-close on small screens (mobile)
+        if (selected && anchor && window.innerWidth < 640) {
+          const target = e.target as Node
+          if (!containerRef.current.contains(target)) {
+            setSelected(null)
+            setAnchor(null)
+          }
+        }
+      }
+
+      document.addEventListener('pointerdown', handlePointer)
+      return () => document.removeEventListener('pointerdown', handlePointer)
+    }, [selected, anchor])
+
+    function handleDateClick(e: React.MouseEvent<HTMLDivElement>, d: number) {
+      const el = e.currentTarget as HTMLDivElement
+      const left = el.offsetLeft
+      const top = el.offsetTop
+      if (selected === d) {
+        setSelected(null)
+        setAnchor(null)
+      } else {
+        setSelected(d)
+        setAnchor({ left, top })
+      }
+    }
 
     return (
-      <div className="rounded-lg border border-white/20 bg-black/60 p-4 backdrop-blur-md text-white shadow-lg">
+      <div ref={containerRef} className="relative rounded-lg border border-white/20 bg-black/60 p-2 sm:p-4 backdrop-blur-md text-white shadow-lg">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-3">
               <button className="p-1 rounded-md hover:bg-white/5">◀</button>
@@ -85,25 +118,41 @@ export default function Dashboard() {
             <div className="text-sm opacity-80">Pending</div>
           </div>
 
-          <div className="grid grid-cols-7 gap-2 text-xs">
+          <div className="grid grid-cols-7 gap-0 sm:gap-1 text-xs">
             {['S','M','T','W','T','F','S'].map((d, idx) => (
               <div key={`${d}-${idx}`} className="text-center opacity-70">{d}</div>
             ))}
-
             {days.map(d => (
-              <div key={d} className="h-10 flex items-center justify-center">
-                <div className="relative w-8 h-8 flex items-center justify-center rounded-full bg-white/5">
-                  <div className="text-sm">{d}</div>
+              <div key={d} className="h-5 sm:h-8 flex items-center justify-center">
+                <div
+                  onClick={(e) => handleDateClick(e, d)}
+                  role="button"
+                  tabIndex={0}
+                  className={`relative w-4 sm:w-8 h-4 sm:h-8 flex items-center justify-center rounded-full bg-white/5 cursor-pointer ${selected === d ? 'ring-2 ring-emerald-400' : ''}`}
+                >
+                  <div className="text-[10px] sm:text-sm">{d}</div>
                   {pending.has(d) && (
-                    <div className="absolute -right-2 -top-2 bg-red-600 rounded-full w-5 h-5 flex items-center justify-center text-[10px]">✕</div>
+                    <div className="absolute -right-2 -top-2 bg-red-600 rounded-full w-2.5 sm:w-5 h-2.5 sm:h-5 flex items-center justify-center text-[7px] sm:text-[10px]">✕</div>
                   )}
                   {confirmed.has(d) && (
-                    <div className="absolute -right-2 -top-2 bg-emerald-500 rounded-full w-5 h-5 flex items-center justify-center text-[10px]">✓</div>
+                    <div className="absolute -right-2 -top-2 bg-emerald-500 rounded-full w-2.5 sm:w-5 h-2.5 sm:h-5 flex items-center justify-center text-[7px] sm:text-[10px]">✓</div>
                   )}
                 </div>
               </div>
             ))}
           </div>
+          {/* Dropdown with details for selected date */}
+          {selected && anchor && (
+            <div
+              className="absolute z-50 w-36 sm:w-44 bg-black/80 border border-white/20 rounded-md p-2 sm:p-3 shadow-lg text-sm"
+              style={{ left: anchor.left, top: anchor.top + 36 }}
+            >
+              <div className="text-xs opacity-80">{selected} Feb</div>
+              <div className="mt-1 font-semibold">Frontend</div>
+              <div className="text-xs sm:text-sm opacity-80 mt-1">76% complete</div>
+              <div className="mt-1 text-xs sm:text-sm leading-snug">Work on the layout</div>
+            </div>
+          )}
         </div>
     )
   }
@@ -145,20 +194,23 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="p-6 v-scrollbar-hide">
+    <div className="pt-0 px-2 sm:px-3 lg:px-6 pb-6 v-scrollbar-hide">
 
       {/* Recommended Collections: horizontally scrollable cards */}
       <section className="mb-6">
         <h2 className="mb-3 text-lg font-semibold">Recommended collections</h2>
         <div className="-mx-2">
           <div className="flex gap-4 overflow-x-auto px-2 py-2 scrollbar-hide">
-            {collections.map((c) => (
-              <div key={c.title} className={`min-w-55 shrink-0 rounded-lg p-4 text-white ${c.color} shadow-lg`}>
-                <div className="text-sm opacity-90">Collection</div>
-                <div className="mt-2 text-xl font-bold">{c.title}</div>
-                <div className="mt-3 text-xs opacity-90">5 courses · 24 items</div>
-              </div>
-            ))}
+            {collections.map((c) => {
+              const smColor = c.color.replace('bg-', 'sm:bg-')
+              return (
+                <div key={c.title} className={`min-w-55 shrink-0 rounded-lg p-4 text-white bg-gray-600 ${smColor} shadow-lg`}>
+                  <div className="text-sm opacity-90">Collection</div>
+                  <div className="mt-2 text-xl font-bold">{c.title}</div>
+                  <div className="mt-3 text-xs opacity-90">5 courses · 24 items</div>
+                </div>
+              )
+            })}
           </div>
         </div>
       </section>
@@ -166,7 +218,7 @@ export default function Dashboard() {
 
       {/* New 2-column layout below recommended collections (left column smaller) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 rounded-lg p-6 bg-white/80 dark:bg-gray-900/60 flex flex-col items-center">
+        <div className="lg:col-span-1 rounded-lg p-6 bg-black/80 dark:bg-black/60 flex flex-col items-center">
           <h3 className="mb-4 text-lg font-semibold">Readiness Score</h3>
 
           {/* small circular progress badges, scrollable */}
@@ -212,11 +264,11 @@ language from a second planet.
 
         </div>
 
-        <div className="lg:col-span-2 relative rounded-lg p-6 bg-white/80 dark:bg-gray-900/60">
+        <div className="lg:col-span-2 relative rounded-lg p-4 sm:p-6 bg-black/80 dark:bg-black/60">
           {/* right column: contest card, expanding interviews panel, and graph */}
           <div className="flex flex-col gap-6">
-            <div className="flex items-center gap-6">
-              <div className="rounded-lg p-4 bg-white/90 dark:bg-gray-800/70 shadow w-56 border text-center">
+            <div className="flex flex-col lg:flex-row items-center gap-6">
+              <div className="rounded-lg p-4 bg-white/90 dark:bg-gray-800/70 shadow w-full sm:w-56 border text-center">
                 <div className="text-sm text-gray-600 dark:text-gray-300">Slaying September Contest</div>
                 <div className="mt-4">
                   <button className="px-4 py-2 rounded-md border bg-gray-100 dark:bg-gray-900/40">Continue</button>
@@ -227,13 +279,13 @@ language from a second planet.
                 <div
                   onMouseEnter={() => setHoverOpen(true)}
                   onMouseLeave={() => setHoverOpen(false)}
-                  className={`transition-all duration-300 ease-in-out ${hoverOpen ? 'absolute z-40 right-6 top-6' : 'relative inline-block'}`}
+                  className={`transition-all duration-300 ease-in-out ${hoverOpen ? 'absolute z-50 right-3 top-16 sm:static sm:right-auto sm:top-auto' : 'relative inline-block'}`}
                 >
                   <div
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setHoverOpen(s => !s) }}
-                    className={`transition-all duration-300 ease-in-out overflow-hidden ${hoverOpen ? 'w-180 h-95 rounded-lg p-0 bg-black/60 border border-white/20 text-white' : 'rounded-md px-4 py-2 border bg-transparent'}`}
+                    className={`transition-all duration-300 ease-in-out overflow-hidden ${hoverOpen ? 'w-64 sm:w-auto rounded-lg p-0 bg-black/60 border border-white/20 text-white' : 'rounded-md px-4 py-2 border bg-transparent w-full lg:w-auto text-center'}`}
                   >
                     {!hoverOpen ? (
                       <button className="bg-transparent">Check your interviews</button>
@@ -250,14 +302,14 @@ language from a second planet.
             </div>
 
             <div className="rounded-lg border p-4 h-96 bg-transparent relative overflow-hidden">
-              <div className="mx-auto w-full max-w-3xl h-full">
+              <div className="mx-auto w-full sm:max-w-3xl h-full">
                 <div className="flex flex-col gap-3 mb-4">
-                  <select className="rounded-md border px-3 py-1 bg-transparent text-sm text-gray-800 dark:text-gray-200 dashboard-select">
+                  <select className="rounded-md border px-2 sm:px-3 py-1 w-full sm:w-36 bg-transparent text-xs sm:text-sm text-gray-800 dark:text-gray-200 dashboard-select">
                     <option>Monthly</option>
                     <option>Weekly</option>
                     <option>Daily</option>
                   </select>
-                  <select className="rounded-md border px-3 py-1 bg-transparent text-sm text-gray-800 dark:text-gray-200 dashboard-select">
+                  <select className="rounded-md border px-2 sm:px-3 py-1 w-full sm:w-36 bg-transparent text-xs sm:text-sm text-gray-800 dark:text-gray-200 dashboard-select">
                     <option>subject</option>
                     <option>Frontend</option>
                     <option>Backend</option>

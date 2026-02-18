@@ -10,15 +10,23 @@ export default function TopNav() {
       </div>
 
       <div className="flex items-center gap-3">
-        <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-transparent">
-          <div className="text-sm">🔥</div>
-          <div className="text-sm">10</div>
+        <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-transparent mr-6 hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+          <img src="/TopPanel/fire.png" alt="activity" className="w-7 h-7 object-contain" />
+          <div className="text-base font-medium">10</div>
         </div>
 
-        <button className="p-2 rounded hover:bg-gray-100 dark:hover:bg-zinc-800">❓</button>
-        <button className="p-2 rounded hover:bg-gray-100 dark:hover:bg-zinc-800">✉️</button>
-        <button className="p-2 rounded hover:bg-gray-100 dark:hover:bg-zinc-800">ℹ️</button>
-        <button className="p-2 rounded hover:bg-gray-100 dark:hover:bg-zinc-800">👤</button>
+        <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+          <img src="/TopPanel/help.png" alt="help" className="w-7 h-7 object-contain" />
+        </button>
+        <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+          <img src="/TopPanel/feedback.png" alt="messages" className="w-7 h-7 object-contain" />
+        </button>
+        <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+          <img src="/TopPanel/about.png" alt="about" className="w-7 h-7 object-contain" />
+        </button>
+        <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
+          <img src="/TopPanel/profile.png" alt="profile" className="w-7 h-7 object-contain rounded-full" />
+        </button>
       </div>
     </header>
   );

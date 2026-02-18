@@ -25,3 +25,22 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Sidebar: expand on hover and show labels */
+.sidebar .sidebar-expandable {
+  width: 4rem !important; /* match Tailwind w-16 */
+  transition: width 200ms ease-in-out;
+}
+
+.sidebar:hover .sidebar-expandable {
+  width: 14rem !important; /* matches Tailwind w-56 */
+}
+
+/* Labels: visible when sidebar hovered OR when individual link hovered */
+.sidebar:hover .label,
+.group:hover .label {
+  opacity: 1 !important;
+}
+
+.group .label {
+  transition: opacity 200ms;
+}
