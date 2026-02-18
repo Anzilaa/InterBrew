@@ -229,12 +229,14 @@ language from a second planet.
                   onMouseLeave={() => setHoverOpen(false)}
                   className={`transition-all duration-300 ease-in-out ${hoverOpen ? 'absolute z-40 right-6 top-6' : 'relative inline-block'}`}
                 >
-                  <button
-                    type="button"
-                    className={`transition-all duration-300 ease-in-out overflow-hidden ${hoverOpen ? 'w-[720px] h-[380px] rounded-lg p-0 bg-black/60 border border-white/20 text-white' : 'rounded-full px-4 py-2 border bg-transparent'}`}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setHoverOpen(s => !s) }}
+                    className={`transition-all duration-300 ease-in-out overflow-hidden ${hoverOpen ? 'w-180 h-95 rounded-lg p-0 bg-black/60 border border-white/20 text-white' : 'rounded-md px-4 py-2 border bg-transparent'}`}
                   >
                     {!hoverOpen ? (
-                      <span>Check your interviews</span>
+                      <button className="bg-transparent">Check your interviews</button>
                     ) : (
                       <div className="w-full h-full">
                         <div className="p-3">
@@ -242,7 +244,7 @@ language from a second planet.
                         </div>
                       </div>
                     )}
-                  </button>
+                  </div>
                 </div>
               </div>
             </div>
