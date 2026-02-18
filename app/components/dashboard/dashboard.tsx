@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from "react"
+import { createPortal } from 'react-dom'
 import "./dashboard.css"
 
 function StatCard({ title, value, delta }: { title: string; value: string; delta?: string }) {
@@ -75,7 +76,9 @@ export default function Dashboard() {
     const confirmed = new Set([8, 15, 22])
     const [selected, setSelected] = useState<number | null>(null)
     const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null)
+    const [anchorFixed, setAnchorFixed] = useState(false)
     const containerRef = useRef<HTMLDivElement | null>(null)
+    const dropdownRef = useRef<HTMLDivElement | null>(null)
 
     useEffect(() => {
       function handlePointer(e: PointerEvent) {
@@ -83,9 +86,12 @@ export default function Dashboard() {
         // only auto-close on small screens (mobile)
         if (selected && anchor && window.innerWidth < 640) {
           const target = e.target as Node
-          if (!containerRef.current.contains(target)) {
+          const inContainer = containerRef.current.contains(target)
+          const inDropdown = dropdownRef.current?.contains(target)
+          if (!inContainer && !inDropdown) {
             setSelected(null)
             setAnchor(null)
+            setAnchorFixed(false)
           }
         }
       }
@@ -96,14 +102,32 @@ export default function Dashboard() {
 
     function handleDateClick(e: React.MouseEvent<HTMLDivElement>, d: number) {
       const el = e.currentTarget as HTMLDivElement
-      const left = el.offsetLeft
-      const top = el.offsetTop
-      if (selected === d) {
-        setSelected(null)
-        setAnchor(null)
+      // if mobile use viewport coords (getBoundingClientRect) and position fixed
+      if (window.innerWidth < 640) {
+        const rect = el.getBoundingClientRect()
+        const left = rect.left
+        const top = rect.bottom
+        if (selected === d) {
+          setSelected(null)
+          setAnchor(null)
+          setAnchorFixed(false)
+        } else {
+          setSelected(d)
+          setAnchor({ left, top })
+          setAnchorFixed(true)
+        }
       } else {
-        setSelected(d)
-        setAnchor({ left, top })
+        const left = el.offsetLeft
+        const top = el.offsetTop
+        if (selected === d) {
+          setSelected(null)
+          setAnchor(null)
+          setAnchorFixed(false)
+        } else {
+          setSelected(d)
+          setAnchor({ left, top })
+          setAnchorFixed(false)
+        }
       }
     }
 
@@ -142,17 +166,37 @@ export default function Dashboard() {
             ))}
           </div>
           {/* Dropdown with details for selected date */}
-          {selected && anchor && (
-            <div
-              className="absolute z-50 w-36 sm:w-44 bg-black/80 border border-white/20 rounded-md p-2 sm:p-3 shadow-lg text-sm"
-              style={{ left: anchor.left, top: anchor.top + 36 }}
-            >
-              <div className="text-xs opacity-80">{selected} Feb</div>
-              <div className="mt-1 font-semibold">Frontend</div>
-              <div className="text-xs sm:text-sm opacity-80 mt-1">76% complete</div>
-              <div className="mt-1 text-xs sm:text-sm leading-snug">Work on the layout</div>
-            </div>
-          )}
+              {selected && anchor && (() => {
+                const dd = (
+                  <div
+                    ref={dropdownRef}
+                    className={`${anchorFixed ? 'fixed' : 'absolute'} z-50 w-36 sm:w-44 bg-black/80 border border-white/20 rounded-md p-2 sm:p-3 shadow-lg text-sm`}
+                    style={{}}
+                  >
+                    <div className="text-xs opacity-80">{selected} Feb</div>
+                    <div className="mt-1 font-semibold">Frontend</div>
+                    <div className="text-xs sm:text-sm opacity-80 mt-1">76% complete</div>
+                    <div className="mt-1 text-xs sm:text-sm leading-snug">Work on the layout</div>
+                  </div>
+                )
+
+                if (anchorFixed) {
+                  // compute fixed position clamped to viewport
+                  try {
+                    const ddW = 144
+                    const leftRaw = anchor.left
+                    const maxLeft = Math.max(8, window.innerWidth - ddW - 8)
+                    const left = Math.min(Math.max(leftRaw, 8), maxLeft)
+                    const top = anchor.top + 6
+                    return createPortal(React.cloneElement(dd, { style: { left, top } }), document.body)
+                  } catch (e) {
+                    return dd
+                  }
+                }
+
+                // absolute inside calendar container
+                return React.cloneElement(dd, { style: { left: anchor.left, top: anchor.top + 36 } })
+              })()}
         </div>
     )
   }
@@ -194,23 +238,20 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="pt-0 px-2 sm:px-3 lg:px-6 pb-6 v-scrollbar-hide">
+    <div className="pt-0 px-0 sm:px-2 lg:px-6 pb-6 v-scrollbar-hide">
 
       {/* Recommended Collections: horizontally scrollable cards */}
       <section className="mb-6">
         <h2 className="mb-3 text-lg font-semibold">Recommended collections</h2>
-        <div className="-mx-2">
+        <div>
           <div className="flex gap-4 overflow-x-auto px-2 py-2 scrollbar-hide">
-            {collections.map((c) => {
-              const smColor = c.color.replace('bg-', 'sm:bg-')
-              return (
-                <div key={c.title} className={`min-w-55 shrink-0 rounded-lg p-4 text-white bg-gray-600 ${smColor} shadow-lg`}>
-                  <div className="text-sm opacity-90">Collection</div>
-                  <div className="mt-2 text-xl font-bold">{c.title}</div>
-                  <div className="mt-3 text-xs opacity-90">5 courses · 24 items</div>
-                </div>
-              )
-            })}
+            {collections.map((c) => (
+              <div key={c.title} className="min-w-60 shrink-0 rounded-lg p-6 text-white bg-[#212125] shadow-lg">
+                <div className="text-sm opacity-90">Collection</div>
+                <div className="mt-3 text-2xl font-bold">{c.title}</div>
+                <div className="mt-4 text-sm opacity-90">5 courses · 24 items</div>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -267,35 +308,60 @@ language from a second planet.
         <div className="lg:col-span-2 relative rounded-lg p-4 sm:p-6 bg-black/80 dark:bg-black/60">
           {/* right column: contest card, expanding interviews panel, and graph */}
           <div className="flex flex-col gap-6">
-            <div className="flex flex-col lg:flex-row items-center gap-6">
-              <div className="rounded-lg p-4 bg-white/90 dark:bg-gray-800/70 shadow w-full sm:w-56 border text-center">
-                <div className="text-sm text-gray-600 dark:text-gray-300">Slaying September Contest</div>
-                <div className="mt-4">
-                  <button className="px-4 py-2 rounded-md border bg-gray-100 dark:bg-gray-900/40">Continue</button>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+              {/* Left column: two stacked boxes */}
+              <div className="flex flex-col gap-4">
+                <div className="rounded-lg p-4 bg-[#212125] text-white shadow w-full text-center">
+                  <div className="text-sm opacity-90">Slaying September Contest</div>
+                  <div className="mt-4">
+                    <button className="px-4 py-2 rounded-md bg-[#19332C]/50 hover:bg-[#19332C]/80 text-white">Continue</button>
+                  </div>
+                </div>
+
+                <div className="rounded-lg p-4 bg-[#212125] text-white shadow w-full text-center">
+                  <div className="text-sm opacity-90">Continue Training</div>
+                  <div className="mt-4">
+                    <button className="px-4 py-2 rounded-md bg-[#19332C]/50 hover:bg-[#19332C]/80 text-white">Continue</button>
+                  </div>
                 </div>
               </div>
 
-              <div className="flex items-center">
-                <div
-                  onMouseEnter={() => setHoverOpen(true)}
-                  onMouseLeave={() => setHoverOpen(false)}
-                  className={`transition-all duration-300 ease-in-out ${hoverOpen ? 'absolute z-50 right-3 top-16 sm:static sm:right-auto sm:top-auto' : 'relative inline-block'}`}
-                >
-                  <div
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setHoverOpen(s => !s) }}
-                    className={`transition-all duration-300 ease-in-out overflow-hidden ${hoverOpen ? 'w-64 sm:w-auto rounded-lg p-0 bg-black/60 border border-white/20 text-white' : 'rounded-md px-4 py-2 border bg-transparent w-full lg:w-auto text-center'}`}
-                  >
-                    {!hoverOpen ? (
-                      <button className="bg-transparent">Check your interviews</button>
-                    ) : (
-                      <div className="w-full h-full">
-                        <div className="p-3">
-                          <Calendar />
-                        </div>
+              {/* Right column: calendar (desktop inline, mobile toggle preserved) */}
+              <div className="flex items-center w-full">
+                <div className="w-full">
+                  {/* Desktop: always show calendar inline */}
+                  <div className="hidden sm:block w-full">
+                    <div className="w-full rounded-lg p-0 bg-black/60 border border-white/20 text-white">
+                      <div className="p-3">
+                        <Calendar />
                       </div>
-                    )}
+                    </div>
+                  </div>
+
+                  {/* Mobile: keep the toggle button which expands the calendar */}
+                  <div className="block sm:hidden">
+                    <div
+                      onMouseEnter={() => setHoverOpen(true)}
+                      onMouseLeave={() => setHoverOpen(false)}
+                      className={`transition-all duration-300 ease-in-out ${hoverOpen ? 'absolute z-50 right-3 top-16' : 'relative inline-block'}`}
+                    >
+                      <div
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setHoverOpen(s => !s) }}
+                        className={`transition-all duration-300 ease-in-out overflow-hidden ${hoverOpen ? 'w-64 rounded-lg p-0 bg-black/60 border border-white/20 text-white' : 'rounded-md px-4 py-2 border bg-transparent w-full text-center'}`}
+                      >
+                        {!hoverOpen ? (
+                          <button className="bg-transparent">Check your interviews</button>
+                        ) : (
+                          <div className="w-full h-full">
+                            <div className="p-3">
+                              <Calendar />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
