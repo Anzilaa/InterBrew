@@ -9,7 +9,7 @@ export default function GlobalShell({ children }) {
   const pathname = usePathname() || "/";
   const isLanding = pathname === "/";
 
-  if (isLanding) return <>{children}</>;
+  if (isLanding) return <><Background />{children}</>;
 
   return (
     <div className="min-h-screen">

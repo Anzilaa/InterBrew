@@ -112,7 +112,7 @@ export default function Dashboard() {
         <div className="-mx-2">
           <div className="flex gap-4 overflow-x-auto px-2 py-2 scrollbar-hide">
             {collections.map((c) => (
-              <div key={c.title} className={`min-w-[220px] flex-shrink-0 rounded-lg p-4 text-white ${c.color} shadow-lg`}>
+              <div key={c.title} className={`min-w-55 shrink-0 rounded-lg p-4 text-white ${c.color} shadow-lg`}>
                 <div className="text-sm opacity-90">Collection</div>
                 <div className="mt-2 text-xl font-bold">{c.title}</div>
                 <div className="mt-3 text-xs opacity-90">5 courses · 24 items</div>
@@ -133,7 +133,7 @@ export default function Dashboard() {
             <div className="-mx-2">
               <div className="flex gap-4 overflow-x-auto px-2 py-2 scrollbar-hide items-end">
                 {collections.map((c, i) => (
-                  <div key={c.title} className="flex-shrink-0 flex flex-col items-center">
+                  <div key={c.title} className="shrink-0 flex flex-col items-center">
                     <SmallRing percent={progress[i] ?? 0} label={abbreviate(c.title)} />
                   </div>
                 ))}
