@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
 import "./dashboard.css"
 
 function StatCard({ title, value, delta }: { title: string; value: string; delta?: string }) {
@@ -67,6 +67,47 @@ function SmallRing({ percent = 0, size = 68, stroke = 6, label = '' }: { percent
 }
 
 export default function Dashboard() {
+  const [hoverOpen, setHoverOpen] = useState(false)
+
+  function Calendar() {
+    const days = Array.from({ length: 35 }, (_, i) => i + 1)
+    const pending = new Set([2, 10, 17])
+    const confirmed = new Set([8, 15, 22])
+
+    return (
+      <div className="rounded-lg border border-white/20 bg-black/60 p-4 backdrop-blur-md text-white shadow-lg">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <button className="p-1 rounded-md hover:bg-white/5">◀</button>
+              <div className="font-semibold">January</div>
+              <button className="p-1 rounded-md hover:bg-white/5">▶</button>
+            </div>
+            <div className="text-sm opacity-80">Pending</div>
+          </div>
+
+          <div className="grid grid-cols-7 gap-2 text-xs">
+            {['S','M','T','W','T','F','S'].map((d, idx) => (
+              <div key={`${d}-${idx}`} className="text-center opacity-70">{d}</div>
+            ))}
+
+            {days.map(d => (
+              <div key={d} className="h-10 flex items-center justify-center">
+                <div className="relative w-8 h-8 flex items-center justify-center rounded-full bg-white/5">
+                  <div className="text-sm">{d}</div>
+                  {pending.has(d) && (
+                    <div className="absolute -right-2 -top-2 bg-red-600 rounded-full w-5 h-5 flex items-center justify-center text-[10px]">✕</div>
+                  )}
+                  {confirmed.has(d) && (
+                    <div className="absolute -right-2 -top-2 bg-emerald-500 rounded-full w-5 h-5 flex items-center justify-center text-[10px]">✓</div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+    )
+  }
+
   const collections = [
     { title: 'Frontend', color: 'bg-emerald-600' },
     { title: 'Backend', color: 'bg-sky-600' },
@@ -171,8 +212,8 @@ language from a second planet.
 
         </div>
 
-        <div className="lg:col-span-2 rounded-lg p-6 bg-white/80 dark:bg-gray-900/60">
-          {/* right column: contest card, quick action, and graph */}
+        <div className="lg:col-span-2 relative rounded-lg p-6 bg-white/80 dark:bg-gray-900/60">
+          {/* right column: contest card, expanding interviews panel, and graph */}
           <div className="flex flex-col gap-6">
             <div className="flex items-center gap-6">
               <div className="rounded-lg p-4 bg-white/90 dark:bg-gray-800/70 shadow w-56 border text-center">
@@ -183,7 +224,26 @@ language from a second planet.
               </div>
 
               <div className="flex items-center">
-                <button className="rounded-full border px-4 py-2 bg-transparent">Check your interviews</button>
+                <div
+                  onMouseEnter={() => setHoverOpen(true)}
+                  onMouseLeave={() => setHoverOpen(false)}
+                  className={`transition-all duration-300 ease-in-out ${hoverOpen ? 'absolute z-40 right-6 top-6' : 'relative inline-block'}`}
+                >
+                  <button
+                    type="button"
+                    className={`transition-all duration-300 ease-in-out overflow-hidden ${hoverOpen ? 'w-[720px] h-[380px] rounded-lg p-0 bg-black/60 border border-white/20 text-white' : 'rounded-full px-4 py-2 border bg-transparent'}`}
+                  >
+                    {!hoverOpen ? (
+                      <span>Check your interviews</span>
+                    ) : (
+                      <div className="w-full h-full">
+                        <div className="p-3">
+                          <Calendar />
+                        </div>
+                      </div>
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 
