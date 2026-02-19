@@ -86,7 +86,8 @@ export default function Dashboard() {
     useEffect(() => {
       function handlePointer(e: PointerEvent) {
         if (!containerRef.current) return
-        if (selected && anchor && window.innerWidth < 640) {
+        // close dropdown when clicking anywhere outside the calendar or dropdown
+        if (selected && anchor) {
           const target = e.target as Node
           const inContainer = containerRef.current.contains(target)
           const inDropdown = dropdownRef.current?.contains(target)
@@ -248,6 +249,21 @@ export default function Dashboard() {
     { title: 'UX/UI', color: 'bg-rose-400' },
   ]
 
+  const skills = [
+    { name: 'Coding', abbr: 'CO' },
+    { name: 'Critical Thinking', abbr: 'CT' },
+    { name: 'Communication', abbr: 'CM' },
+    { name: 'Quantitative Aptitude', abbr: 'QA' },
+    { name: 'Problem Solving', abbr: 'PS' },
+    { name: 'System Design', abbr: 'SD' },
+    { name: 'Data Analysis', abbr: 'DA' },
+    { name: 'Algorithms', abbr: 'AL' },
+    { name: 'Machine Learning', abbr: 'ML' },
+    { name: 'Cloud', abbr: 'CL' },
+    { name: 'Mobile', abbr: 'MB' },
+    { name: 'UX', abbr: 'UX' },
+  ]
+
   // sample per-collection progress (same length as collections)
   const progress = [72, 30, 55, 20, 90, 45, 60, 12, 78, 34, 56, 18]
 
@@ -299,8 +315,8 @@ export default function Dashboard() {
             <div className="-mx-2">
               <div className="flex gap-4 overflow-x-auto px-2 py-2 scrollbar-hide items-end">
                 {collections.map((c, i) => (
-                  <div key={c.title} className="shrink-0 flex flex-col items-center">
-                    <SmallRing percent={progress[i] ?? 0} label={abbreviate(c.title)} />
+                  <div key={c.title} className="shrink-0 flex flex-col items-center" title={`${skills[i]?.name ?? c.title} (${skills[i]?.abbr ?? abbreviate(c.title)})`}>
+                    <SmallRing percent={progress[i] ?? 0} label={skills[i]?.abbr ?? abbreviate(c.title)} />
                   </div>
                 ))}
               </div>
