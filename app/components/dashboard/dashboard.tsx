@@ -12,6 +12,7 @@ function StatCard({ title, value, delta }: { title: string; value: string; delta
       <div className={`mt-1 text-sm ${delta?.startsWith("+") ? "text-green-600" : "text-red-500"}`}>
         {delta}
       </div>
+      
     </div>
   )
 }
@@ -69,6 +70,7 @@ function SmallRing({ percent = 0, size = 68, stroke = 6, label = '' }: { percent
 
 export default function Dashboard() {
   const [hoverOpen, setHoverOpen] = useState(false)
+  const [favOpen, setFavOpen] = useState(false)
 
   function Calendar() {
     const today = new Date()
@@ -198,6 +200,7 @@ export default function Dashboard() {
                   <div className="absolute -right-2 -top-2 bg-emerald-500 rounded-full w-2.5 sm:w-5 h-2.5 sm:h-5 flex items-center justify-center text-[7px] sm:text-[10px]">✓</div>
                 )}
               </div>
+              
             </div>
           ))}
         </div>
@@ -267,6 +270,14 @@ export default function Dashboard() {
   // sample per-collection progress (same length as collections)
   const progress = [72, 30, 55, 20, 90, 45, 60, 12, 78, 34, 56, 18]
 
+  const favQuestions = [
+    "What is closure in JavaScript?",
+    "Explain normalization in databases.",
+    "How does HTTP/2 improve performance?",
+    "Design an LRU cache.",
+    "Explain the CAP theorem.",
+    "What is the difference between TCP and UDP?",
+  ]
   function abbreviate(title: string) {
     const map: Record<string, string> = {
       Frontend: 'FE',
@@ -289,10 +300,10 @@ export default function Dashboard() {
     <div className="pt-0 px-0 sm:px-0 lg:px-2 pb-6 v-scrollbar-hide">
 
       {/* Recommended Collections: horizontally scrollable cards */}
-      <section className="mb-6">
+      <section className="mb-2">
         <h2 className="mb-3 text-lg font-semibold">Recommended collections</h2>
         <div>
-          <div className="flex gap-4 overflow-x-auto px-2 py-2 scrollbar-hide">
+            <div className="flex gap-4 overflow-x-auto pl-0 pr-2 py-2 scrollbar-hide">
             {collections.map((c) => (
               <div key={c.title} className="min-w-56 sm:min-w-[20rem] md:min-w-104 lg:min-w-120 shrink-0 rounded-lg p-6 sm:p-8 md:p-10 text-white bg-transparent recommended-card">
                 <div className="text-sm opacity-90">Collection</div>
@@ -301,12 +312,39 @@ export default function Dashboard() {
               </div>
             ))}
           </div>
+            {favOpen && (() => {
+              const modal = (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                  <div className="absolute inset-0 bg-transparent backdrop-blur-sm" onClick={() => setFavOpen(false)} />
+                  <div className="relative w-full max-w-2xl p-4">
+                    <div className="rounded-lg p-6 bg-transparent text-white recommended-card" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-between">
+                        <div className="text-lg font-semibold">Favourite questions</div>
+                        <button onClick={() => setFavOpen(false)} className="ml-2 px-3 py-1 rounded-md bg-white/10">Close</button>
+                      </div>
+                      <div className="mt-4 max-h-64 overflow-y-auto">
+                        <ul className="space-y-3">
+                          {favQuestions.map((q, i) => (
+                            <li key={i} className="text-sm opacity-90">{q}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+              try {
+                return createPortal(modal, document.body)
+              } catch (e) {
+                return modal
+              }
+            })()}
         </div>
       </section>
 
 
       {/* New 2-column layout below recommended collections (left column smaller) */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         <div className="lg:col-span-2 rounded-lg p-6 bg-black/80 dark:bg-black/60 flex flex-col items-center">
           <h3 className="mb-4 text-lg font-semibold">Readiness Score</h3>
 
@@ -356,11 +394,19 @@ export default function Dashboard() {
                   <button className="px-4 py-2 rounded-md bg-[#19332C]/50 hover:bg-[#19332C]/80 text-white">Continue</button>
                 </div>
               </div>
-
-              <div className="rounded-lg p-6 bg-transparent text-white w-full text-center recommended-card">
-                <div className="text-sm opacity-90">Continue Training</div>
-                <div className="mt-4">
-                  <button className="px-4 py-2 rounded-md bg-[#19332C]/50 hover:bg-[#19332C]/80 text-white">Continue</button>
+              <div
+                className="rounded-lg p-6 bg-transparent text-white w-full recommended-card cursor-pointer"
+                onClick={() => setFavOpen(true)}
+              >
+                <div className="text-sm opacity-90">Favourite questions</div>
+                <div className="mt-3 text-left">
+                  <div className="max-h-32 overflow-y-auto pr-2">
+                    <ul className="space-y-2 text-sm">
+                      {favQuestions.slice(0, 4).map((q, idx) => (
+                        <li key={idx} className="opacity-90">• {q}</li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
               </div>
 
