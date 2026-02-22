@@ -11,6 +11,7 @@
   "dependencies": {
     "@react-three/fiber": "^9.5.0",
     "@shadergradient/react": "^2.4.20",
+    "@supabase/supabase-js": "^2.97.0",
     "camera-controls": "^3.1.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
