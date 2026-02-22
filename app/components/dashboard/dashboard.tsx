@@ -1,30 +1,53 @@
-"use client"
+"use client";
 
 import React, { useState, useEffect, useRef } from "react"
 import { createPortal } from 'react-dom'
 import "./dashboard.css"
 
-function StatCard({ title, value, delta }: { title: string; value: string; delta?: string }) {
+function StatCard({
+  title,
+  value,
+  delta,
+}: {
+  title: string;
+  value: string;
+  delta?: string;
+}) {
   return (
     <div className="rounded-lg bg-white/80 dark:bg-gray-900/60 p-4 shadow">
       <div className="text-sm text-gray-600 dark:text-gray-300">{title}</div>
       <div className="mt-2 text-2xl font-bold">{value}</div>
-      <div className={`mt-1 text-sm ${delta?.startsWith("+") ? "text-green-600" : "text-red-500"}`}>
+      <div
+        className={`mt-1 text-sm ${delta?.startsWith("+") ? "text-green-600" : "text-red-500"}`}
+      >
         {delta}
       </div>
       
     </div>
-  )
+  );
 }
 
-function ReadinessScore({ percent = 0, size = 120, strokeWidth = 12 }: { percent?: number; size?: number; strokeWidth?: number }) {
-  const radius = (size - strokeWidth) / 2
-  const circumference = 2 * Math.PI * radius
-  const offset = circumference - (percent / 100) * circumference
+function ReadinessScore({
+  percent = 0,
+  size = 120,
+  strokeWidth = 12,
+}: {
+  percent?: number;
+  size?: number;
+  strokeWidth?: number;
+}) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (percent / 100) * circumference;
 
   return (
     <div className="flex flex-col items-center">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="transform -rotate-90">
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="transform -rotate-90"
+      >
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -47,25 +70,59 @@ function ReadinessScore({ percent = 0, size = 120, strokeWidth = 12 }: { percent
       </svg>
       <div className="mt-3 text-2xl font-bold">{percent}%</div>
     </div>
-  )
+  );
 }
 
-function SmallRing({ percent = 0, size = 68, stroke = 6, label = '' }: { percent?: number; size?: number; stroke?: number; label?: string }) {
-  const radius = (size - stroke) / 2
-  const circumference = 2 * Math.PI * radius
-  const offset = circumference - (percent / 100) * circumference
+function SmallRing({
+  percent = 0,
+  size = 68,
+  stroke = 6,
+  label = "",
+}: {
+  percent?: number;
+  size?: number;
+  stroke?: number;
+  label?: string;
+}) {
+  const radius = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (percent / 100) * circumference;
   return (
     <div className="flex flex-col items-center w-20">
       <div className="relative">
-        <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="transform -rotate-90">
-          <circle cx={size / 2} cy={size / 2} r={radius} stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} fill="none" />
-          <circle cx={size / 2} cy={size / 2} r={radius} stroke="#10B981" strokeWidth={stroke} strokeLinecap="round" fill="none" strokeDasharray={circumference} strokeDashoffset={offset} />
+        <svg
+          width={size}
+          height={size}
+          viewBox={`0 0 ${size} ${size}`}
+          className="transform -rotate-90"
+        >
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke="rgba(255,255,255,0.08)"
+            strokeWidth={stroke}
+            fill="none"
+          />
+          <circle
+            cx={size / 2}
+            cy={size / 2}
+            r={radius}
+            stroke="#10B981"
+            strokeWidth={stroke}
+            strokeLinecap="round"
+            fill="none"
+            strokeDasharray={circumference}
+            strokeDashoffset={offset}
+          />
         </svg>
-        <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold">{label}</div>
+        <div className="absolute inset-0 flex items-center justify-center text-xs font-semibold">
+          {label}
+        </div>
       </div>
       <div className="mt-2 text-sm font-medium">{percent}%</div>
     </div>
-  )
+  );
 }
 
 export default function Dashboard() {
@@ -238,19 +295,19 @@ export default function Dashboard() {
   }
 
   const collections = [
-    { title: 'Frontend', color: 'bg-emerald-600' },
-    { title: 'Backend', color: 'bg-sky-600' },
-    { title: 'Database', color: 'bg-violet-600' },
-    { title: 'DevOps', color: 'bg-orange-500' },
-    { title: 'Security', color: 'bg-rose-600' },
-    { title: 'Data Science', color: 'bg-green-700' },
-    { title: 'System Programming', color: 'bg-slate-700' },
-    { title: 'Algorithms', color: 'bg-indigo-600' },
-    { title: 'Machine Learning', color: 'bg-pink-600' },
-    { title: 'Cloud', color: 'bg-cyan-600' },
-    { title: 'Mobile', color: 'bg-yellow-600' },
-    { title: 'UX/UI', color: 'bg-rose-400' },
-  ]
+    { title: "Frontend", color: "bg-emerald-600" },
+    { title: "Backend", color: "bg-sky-600" },
+    { title: "Database", color: "bg-violet-600" },
+    { title: "DevOps", color: "bg-orange-500" },
+    { title: "Security", color: "bg-rose-600" },
+    { title: "Data Science", color: "bg-green-700" },
+    { title: "System Programming", color: "bg-slate-700" },
+    { title: "Algorithms", color: "bg-indigo-600" },
+    { title: "Machine Learning", color: "bg-pink-600" },
+    { title: "Cloud", color: "bg-cyan-600" },
+    { title: "Mobile", color: "bg-yellow-600" },
+    { title: "UX/UI", color: "bg-rose-400" },
+  ];
 
   const skills = [
     { name: 'Coding', abbr: 'CO' },
@@ -268,7 +325,7 @@ export default function Dashboard() {
   ]
 
   // sample per-collection progress (same length as collections)
-  const progress = [72, 30, 55, 20, 90, 45, 60, 12, 78, 34, 56, 18]
+  const progress = [72, 30, 55, 20, 90, 45, 60, 12, 78, 34, 56, 18];
 
   const favQuestions = [
     "What is closure in JavaScript?",
@@ -280,20 +337,28 @@ export default function Dashboard() {
   ]
   function abbreviate(title: string) {
     const map: Record<string, string> = {
-      Frontend: 'FE',
-      Backend: 'BE',
-      Database: 'DB',
-      DevOps: 'DO',
-      Security: 'SEC',
-      'Data Science': 'DS',
-      'System Programming': 'SP',
-      Algorithms: 'AL',
-      'Machine Learning': 'ML',
-      Cloud: 'CL',
-      Mobile: 'MB',
-      'UX/UI': 'UX',
-    }
-    return map[title] ?? title.split(/\W+/).map(w => w[0]).slice(0,2).join('').toUpperCase()
+      Frontend: "FE",
+      Backend: "BE",
+      Database: "DB",
+      DevOps: "DO",
+      Security: "SEC",
+      "Data Science": "DS",
+      "System Programming": "SP",
+      Algorithms: "AL",
+      "Machine Learning": "ML",
+      Cloud: "CL",
+      Mobile: "MB",
+      "UX/UI": "UX",
+    };
+    return (
+      map[title] ??
+      title
+        .split(/\W+/)
+        .map((w) => w[0])
+        .slice(0, 2)
+        .join("")
+        .toUpperCase()
+    );
   }
 
   return (
@@ -342,7 +407,6 @@ export default function Dashboard() {
         </div>
       </section>
 
-
       {/* New 2-column layout below recommended collections (left column smaller) */}
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
         <div className="lg:col-span-2 rounded-lg p-6 bg-black/80 dark:bg-black/60 flex flex-col items-center">
@@ -380,7 +444,6 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
-
         </div>
 
         <div className="lg:col-span-3 relative rounded-lg p-4 sm:p-6 bg-black/80 dark:bg-black/60">
