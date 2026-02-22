@@ -248,6 +248,12 @@ export default function SignupComponent() {
                           const { error } = await supabase.auth.signInWithOAuth(
                             {
                               provider: "google",
+                              options: {
+                                redirectTo: `${window.location.origin}/dashboard`,
+                                queryParams: {
+                                  prompt: "select_account",
+                                },
+                              },
                             },
                           );
                           if (error) alert(error.message);
@@ -280,6 +286,9 @@ export default function SignupComponent() {
                           const { error } = await supabase.auth.signInWithOAuth(
                             {
                               provider: "github",
+                              options: {
+                                redirectTo: `${window.location.origin}/dashboard`,
+                              },
                             },
                           );
                           if (error) alert(error.message);
@@ -420,6 +429,12 @@ export default function SignupComponent() {
                           const { error } = await supabase.auth.signInWithOAuth(
                             {
                               provider: "google",
+                              options: {
+                                redirectTo: `${window.location.origin}/dashboard`,
+                                queryParams: {
+                                  prompt: "select_account",
+                                },
+                              },
                             },
                           );
                           if (error) alert(error.message);
@@ -452,6 +467,9 @@ export default function SignupComponent() {
                           const { error } = await supabase.auth.signInWithOAuth(
                             {
                               provider: "github",
+                              options: {
+                                redirectTo: `${window.location.origin}/dashboard`,
+                              },
                             },
                           );
                           if (error) alert(error.message);

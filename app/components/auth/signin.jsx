@@ -144,6 +144,12 @@ export default function SigninComponent() {
                 onClick={async () => {
                   await supabase.auth.signInWithOAuth({
                     provider: "google",
+                    options: {
+                      redirectTo: `${window.location.origin}/dashboard`,
+                      queryParams: {
+                        prompt: "select_account",
+                      },
+                    },
                   });
                 }}
                 className="w-full inline-flex justify-center items-center py-2 px-4 rounded-lg shadow-sm bg-white/5 backdrop-blur-sm text-sm font-medium text-white hover:bg-white/10 transition-colors"
@@ -173,6 +179,9 @@ export default function SigninComponent() {
                 onClick={async () => {
                   await supabase.auth.signInWithOAuth({
                     provider: "github",
+                    options: {
+                      redirectTo: `${window.location.origin}/dashboard`,
+                    },
                   });
                 }}
                 className="w-full inline-flex justify-center items-center py-2 px-4 rounded-lg shadow-sm bg-white/5 backdrop-blur-sm text-sm font-medium text-white hover:bg-white/10 transition-colors"
