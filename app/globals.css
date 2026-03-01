@@ -56,3 +56,8 @@ body {
 .group .label {
   transition: opacity 200ms;
 }
+
+/* Page-scoped override: disable recommended-card hover lift when wrapper has .no-card-hover */
+.no-card-hover .recommended-card:hover {
+  transform: none !important;
+}
