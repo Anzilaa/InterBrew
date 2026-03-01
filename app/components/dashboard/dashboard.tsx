@@ -128,6 +128,7 @@ function SmallRing({
 export default function Dashboard() {
   const [hoverOpen, setHoverOpen] = useState(false)
   const [favOpen, setFavOpen] = useState(false)
+  const [showAllRings, setShowAllRings] = useState(false)
 
   function Calendar() {
     const today = new Date()
@@ -362,27 +363,29 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="pt-0 px-0 sm:px-0 lg:px-2 pb-6 v-scrollbar-hide">
+    <div className="pt-0 px-0 sm:px-0 lg:px-0 pb-6 v-scrollbar-hide">
 
       {/* Recommended Collections: horizontally scrollable cards */}
-      <section className="mb-2">
-        <h2 className="mb-3 text-lg font-semibold">Recommended collections</h2>
+      <section className="mb-1">
+        <h2 className="mt-2 mb-2 text-2xl font-semibold">Recommended collections</h2>
         <div>
-            <div className="flex gap-4 overflow-x-auto pl-0 pr-2 py-2 scrollbar-hide">
-            {collections.map((c) => (
-              <div key={c.title} className="min-w-56 sm:min-w-[20rem] md:min-w-104 lg:min-w-120 shrink-0 rounded-lg p-6 sm:p-8 md:p-10 text-white bg-transparent recommended-card">
-                <div className="text-sm opacity-90">Collection</div>
-                <div className="mt-3 text-2xl sm:text-3xl md:text-4xl font-bold">{c.title}</div>
-                <div className="mt-4 text-sm opacity-90">5 courses · 24 items</div>
+            <div className="rounded-2xl overflow-hidden">
+              <div className="flex gap-2 overflow-x-auto pl-0 pr-1 py-1 scrollbar-hide">
+                {collections.map((c) => (
+                  <div key={c.title} className="min-w-[20rem] sm:min-w-[24rem] md:min-w-[28rem] lg:min-w-[32rem] shrink-0 rounded-xl p-8 sm:p-10 md:p-12 text-white bg-transparent recommended-card" style={{minHeight: 220}}>
+                    <div className="text-sm opacity-90">Collection</div>
+                    <div className="mt-3 text-2xl sm:text-3xl md:text-4xl font-bold">{c.title}</div>
+                    <div className="mt-4 text-sm opacity-90">5 courses · 24 items</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
             {favOpen && (() => {
               const modal = (
                 <div className="fixed inset-0 z-50 flex items-center justify-center">
                   <div className="absolute inset-0 bg-transparent backdrop-blur-sm" onClick={() => setFavOpen(false)} />
-                  <div className="relative w-full max-w-2xl p-4">
-                    <div className="rounded-lg p-6 bg-transparent text-white recommended-card" onClick={(e) => e.stopPropagation()}>
+                  <div className="relative w-full max-w-2xl p-2">
+                    <div className="rounded-lg p-4 bg-transparent text-white recommended-card" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-between">
                         <div className="text-lg font-semibold">Favourite questions</div>
                         <button onClick={() => setFavOpen(false)} className="ml-2 px-3 py-1 rounded-md bg-white/10">Close</button>
@@ -408,19 +411,32 @@ export default function Dashboard() {
       </section>
 
       {/* New 2-column layout below recommended collections (left column smaller) */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-        <div className="lg:col-span-2 rounded-lg p-6 bg-black/80 dark:bg-black/60 flex flex-col items-center">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-2">
+        <div className="lg:col-span-2 rounded-lg p-4 bg-black/80 dark:bg-black/60 flex flex-col items-center">
           <h3 className="mb-4 text-lg font-semibold">Readiness Score</h3>
 
           {/* small circular progress badges, scrollable */}
           <div className="w-full">
             <div className="-mx-2">
               <div className="flex gap-4 overflow-x-auto px-2 py-2 scrollbar-hide items-end">
-                {collections.map((c, i) => (
+                {(showAllRings ? collections : collections.slice(0, 5)).map((c, i) => (
                   <div key={c.title} className="shrink-0 flex flex-col items-center" title={`${skills[i]?.name ?? c.title} (${skills[i]?.abbr ?? abbreviate(c.title)})`}>
                     <SmallRing percent={progress[i] ?? 0} label={skills[i]?.abbr ?? abbreviate(c.title)} />
                   </div>
                 ))}
+
+                {collections.length > 5 && (
+                  <div className="shrink-0 flex flex-col items-center">
+                    <button
+                      onClick={() => setShowAllRings(!showAllRings)}
+                      aria-label={showAllRings ? 'Show less' : 'Show more'}
+                      className="w-16 h-16 rounded-full border border-white/20 flex items-center justify-center text-white bg-black/40"
+                    >
+                      {showAllRings ? '−' : '+'}
+                    </button>
+                    <div className="mt-2 text-sm font-medium opacity-80">{showAllRings ? 'Less' : 'More'}</div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -446,24 +462,24 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="lg:col-span-3 relative rounded-lg p-4 sm:p-6 bg-black/80 dark:bg-black/60">
+        <div className="lg:col-span-3 relative rounded-lg p-2 sm:p-4 bg-black/80 dark:bg-black/60">
           {/* right column: contest card, expanding interviews panel, and graph */}
           <div className="flex flex-col gap-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
               {/* Two cards placed side-by-side on larger screens */}
-              <div className="rounded-lg p-6 bg-transparent text-white w-full text-center recommended-card">
+              <div className="rounded-lg p-3 bg-transparent text-white w-full text-center recommended-card">
                 <div className="text-sm opacity-90">Slaying September Contest</div>
                 <div className="mt-4">
                   <button className="px-4 py-2 rounded-md bg-[#19332C]/50 hover:bg-[#19332C]/80 text-white">Continue</button>
                 </div>
               </div>
               <div
-                className="rounded-lg p-6 bg-transparent text-white w-full recommended-card cursor-pointer"
+                className="rounded-lg p-3 bg-transparent text-white w-full recommended-card cursor-pointer"
                 onClick={() => setFavOpen(true)}
               >
                 <div className="text-sm opacity-90">Favourite questions</div>
                 <div className="mt-3 text-left">
-                  <div className="max-h-32 overflow-y-auto pr-2">
+                  <div className="pr-2">
                     <ul className="space-y-2 text-sm">
                       {favQuestions.slice(0, 4).map((q, idx) => (
                         <li key={idx} className="opacity-90">• {q}</li>
@@ -476,7 +492,7 @@ export default function Dashboard() {
               {/* Calendar removed from right column per design change */}
             </div>
 
-            <div className="rounded-lg card-outline p-4 h-96 bg-transparent relative overflow-hidden">
+            <div className="rounded-lg card-outline p-3 h-96 bg-transparent relative overflow-hidden">
               <div className="mx-auto w-full sm:max-w-3xl h-full">
                 {/* cards removed from graph area */}
                 <div className="flex flex-col gap-3 mb-4">
