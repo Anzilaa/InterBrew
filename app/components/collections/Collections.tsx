@@ -27,7 +27,7 @@ function SmallCollectionCard({ title, onMock }: { title: string; onMock: (t: str
   const desc = `${title} Description`;
   const slug = title.toLowerCase().replace(/\s+/g, "-");
   return (
-    <div className="group shrink-0 rounded-lg p-8 min-w-[24rem] sm:min-w-[26rem] text-white bg-transparent recommended-card card-outline relative overflow-hidden" style={{minHeight: 180}}>
+    <div className="group shrink-0 rounded-lg p-8 min-w-[24rem] sm:min-w-104 text-white bg-transparent recommended-card card-outline relative overflow-hidden" style={{minHeight: 180}}>
       {/* Visible center content */}
       <div className="flex items-center justify-center h-full">
         <div className="text-lg sm:text-xl font-semibold opacity-100 group-hover:opacity-0 transition-opacity duration-200">{title}</div>

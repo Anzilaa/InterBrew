@@ -372,7 +372,7 @@ export default function Dashboard() {
             <div className="rounded-2xl overflow-hidden">
               <div className="flex gap-2 overflow-x-auto pl-0 pr-1 py-1 scrollbar-hide">
                 {collections.map((c) => (
-                  <div key={c.title} className="min-w-[20rem] sm:min-w-[24rem] md:min-w-[28rem] lg:min-w-[32rem] shrink-0 rounded-xl p-8 sm:p-10 md:p-12 text-white bg-transparent recommended-card" style={{minHeight: 220}}>
+                  <div key={c.title} className="min-w-[20rem] sm:min-w-[24rem] md:min-w-md lg:min-w-lg shrink-0 rounded-xl p-8 sm:p-10 md:p-12 text-white bg-transparent recommended-card" style={{minHeight: 220}}>
                     <div className="text-sm opacity-90">Collection</div>
                     <div className="mt-3 text-2xl sm:text-3xl md:text-4xl font-bold">{c.title}</div>
                     <div className="mt-4 text-sm opacity-90">5 courses · 24 items</div>
