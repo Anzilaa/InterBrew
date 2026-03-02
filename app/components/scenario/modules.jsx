@@ -1,4 +1,5 @@
 "use client";
+import "./modules.css";
 
 const modules = [
   {
@@ -59,7 +60,7 @@ export default function Modules({ onSelect, selectedModule }) {
         </span>
       </div>
 
-      <div className="flex flex-col gap-2.5 overflow-y-auto flex-1 pr-1">
+      <div className="modules-scroll flex flex-col gap-2.5 overflow-y-auto flex-1 pr-1">
         {modules.map((mod) => {
           const progress = Math.round((mod.completed / mod.lessons) * 100);
           const isComplete = mod.completed === mod.lessons;

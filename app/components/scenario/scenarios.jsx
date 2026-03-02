@@ -1,5 +1,5 @@
 "use client";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import "./scenarios.css";
 
 const scenarios = [
@@ -118,14 +118,25 @@ const filterColors = {
 export default function Scenarios({ onSelect, selected }) {
   const [diffFilter, setDiffFilter] = useState(null);
   const [completedOnly, setCompletedOnly] = useState(false);
-  const shuffled = useMemo(() => {
+
+  const ordered = useMemo(() => {
     const withProgress = scenarios
       .filter((s) => s.progress > 0)
       .sort((a, b) => b.progress - a.progress);
-    const noProgress = scenarios
-      .filter((s) => s.progress === 0)
-      .sort(() => Math.random() - 0.5);
+    const noProgress = scenarios.filter((s) => s.progress === 0);
     return [...withProgress, ...noProgress];
+  }, []);
+
+  const [shuffled, setShuffled] = useState(ordered);
+
+  useEffect(() => {
+    const withProgress = scenarios
+      .filter((s) => s.progress > 0)
+      .sort((a, b) => b.progress - a.progress);
+    const noProgress = [...scenarios.filter((s) => s.progress === 0)].sort(
+      () => Math.random() - 0.5,
+    );
+    setShuffled([...withProgress, ...noProgress]);
   }, []);
   const visible = shuffled
     .filter((s) => !diffFilter || s.difficulty === diffFilter)

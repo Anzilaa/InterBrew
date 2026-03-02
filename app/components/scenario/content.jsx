@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import "./content.css";
 
 const overviewStats = [
   { label: "Scenarios Completed", value: "48", sub: "+21 from last month" },
@@ -314,7 +315,7 @@ export default function Content({ selectedScenario }) {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-white">Scenario List</h3>
           </div>
-          <div className="scenarios-scroll flex flex-col gap-2 overflow-y-auto flex-1 pr-1">
+          <div className="content-scroll flex flex-col gap-2 overflow-y-auto flex-1 pr-1">
             {recentActivity.map((item) => (
               <div
                 key={item.id}
@@ -344,7 +345,7 @@ export default function Content({ selectedScenario }) {
       {tab === "insights" && (
         <div className="bg-white/3 border border-white/8 rounded-2xl p-5 flex-1 min-h-0 flex flex-col">
           <h3 className="text-sm font-medium text-white mb-3">AI Insights</h3>
-          <div className="scenarios-scroll flex flex-col gap-3 overflow-y-auto flex-1 pr-1">
+          <div className="content-scroll flex flex-col gap-3 overflow-y-auto flex-1 pr-1">
             {[
               {
                 title: "Strongest Area",
