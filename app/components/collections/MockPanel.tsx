@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
+// supabase not needed here; favourites handled in the interview panel
 
 export default function MockPanel({ topic, onClose, onStart }: { topic: string; onClose: () => void; onStart?: (d: string) => void }) {
   const levels = ["Beginner", "Intermediate", "Advanced"];
@@ -22,6 +23,8 @@ export default function MockPanel({ topic, onClose, onStart }: { topic: string; 
       return copy;
     });
   }
+
+  
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">

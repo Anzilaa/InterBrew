@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import { createPortal } from 'react-dom'
 import "./dashboard.css"
 import { supabase } from "../../../lib/supabaseClient";
@@ -139,20 +139,30 @@ export default function Dashboard() {
     const [anchorFixed, setAnchorFixed] = useState(false)
     const containerRef = useRef<HTMLDivElement | null>(null)
     const dropdownRef = useRef<HTMLDivElement | null>(null)
+    const addFormRef = useRef<HTMLDivElement | null>(null)
 
-    // sample markers (day numbers within the month)
-    const pending = new Set([2, 10, 17])
-    const confirmed = new Set([8, 15, 22])
+    // interview scheduling state
+    const [interviews, setInterviews] = useState<Array<any>>([])
+    const [subjectInput, setSubjectInput] = useState("")
+    const [difficultyInput, setDifficultyInput] = useState("intermediate")
+    const [roundInput, setRoundInput] = useState("")
+    const [notesInput, setNotesInput] = useState("")
+    const [loadingInterviews, setLoadingInterviews] = useState(false)
+    const [showAddFormModal, setShowAddFormModal] = useState(false)
+
+    // month -> map of day number -> interviews for that day
+    const [monthInterviewsMap, setMonthInterviewsMap] = useState<Record<number, any[]>>({})
 
     useEffect(() => {
       function handlePointer(e: PointerEvent) {
         if (!containerRef.current) return
         // close dropdown when clicking anywhere outside the calendar or dropdown
-        if (selected && anchor) {
+        if (selected != null && anchor) {
           const target = e.target as Node
           const inContainer = containerRef.current.contains(target)
           const inDropdown = dropdownRef.current?.contains(target)
-          if (!inContainer && !inDropdown) {
+          const inAddModal = addFormRef.current?.contains(target)
+          if (!inContainer && !inDropdown && !inAddModal) {
             setSelected(null)
             setAnchor(null)
             setAnchorFixed(false)
@@ -195,33 +205,148 @@ export default function Dashboard() {
 
     function handleDateClick(e: React.MouseEvent<HTMLDivElement>, d: number, type: string) {
       const el = e.currentTarget as HTMLDivElement
-      // only allow selecting current-month days
-      if (type !== 'current') return
-      if (window.innerWidth < 640) {
-        const rect = el.getBoundingClientRect()
-        const left = rect.left
-        const top = rect.bottom
-        if (selected === d) {
-          setSelected(null)
-          setAnchor(null)
-          setAnchorFixed(false)
-        } else {
-          setSelected(d)
-          setAnchor({ left, top })
-          setAnchorFixed(true)
+      // ensure add-modal only opens via the + Add button
+      setShowAddFormModal(false)
+      console.debug('[calendar] date clicked', { d, type })
+      // if clicked a prev/next month cell, switch month then select
+      if (type !== 'current') {
+        if (type === 'prev') {
+          setCurrent(new Date(year, month - 1, 1))
+        } else if (type === 'next') {
+          setCurrent(new Date(year, month + 1, 1))
         }
+        // continue to set selection/anchor so dropdown opens for that date
+      }
+      const rect = el.getBoundingClientRect()
+      const left = rect.left
+      const top = rect.bottom
+      if (selected === d) {
+        setSelected(null)
+        setAnchor(null)
+        setAnchorFixed(false)
       } else {
-        const left = el.offsetLeft
-        const top = el.offsetTop
-        if (selected === d) {
-          setSelected(null)
-          setAnchor(null)
-          setAnchorFixed(false)
-        } else {
-          setSelected(d)
-          setAnchor({ left, top })
-          setAnchorFixed(false)
+        setSelected(d)
+        setAnchor({ left, top })
+        // always use fixed/portaled dropdown positioned in viewport
+        setAnchorFixed(true)
+      }
+    }
+
+    const fetchInterviewsForDay = useCallback(async (day: number) => {
+      try {
+        setLoadingInterviews(true)
+        const { data: userData } = await supabase.auth.getUser()
+        const userId = userData?.user?.id
+        if (!userId) return setInterviews([])
+        // build date for current month/year
+        const iso = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+        const { data, error } = await supabase.from('user_interviews').select('*').eq('user_id', userId).eq('interview_date', iso).order('created_at', { ascending: false })
+        if (error) {
+          console.error('Failed to load interviews', error)
+          setInterviews([])
+          return
         }
+        setInterviews(data ?? [])
+      } finally {
+        setLoadingInterviews(false)
+      }
+    }, [month, year])
+
+    const fetchInterviewsForMonth = useCallback(async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser()
+        const userId = userData?.user?.id
+        if (!userId) return setMonthInterviewsMap({})
+        const start = `${year}-${String(month + 1).padStart(2,'0')}-01`
+        const end = `${year}-${String(month + 1).padStart(2,'0')}-${String(new Date(year, month + 1, 0).getDate()).padStart(2,'0')}`
+        const { data, error } = await supabase.from('user_interviews').select('*').eq('user_id', userId).gte('interview_date', start).lte('interview_date', end).order('interview_date', { ascending: true })
+        if (error) {
+          console.error('Failed to load monthly interviews', error)
+          setMonthInterviewsMap({})
+          return
+        }
+        const map: Record<number, any[]> = {};
+        ;(data ?? []).forEach((iv: any) => {
+          try {
+            const day = new Date(iv.interview_date).getDate()
+            map[day] = map[day] || []
+            map[day].push(iv)
+          } catch (e) {
+            // ignore parse errors
+          }
+        })
+        console.debug('[calendar] month interviews map', map)
+        setMonthInterviewsMap(map)
+      } catch (e) {
+        console.error(e)
+        setMonthInterviewsMap({})
+      }
+    }, [month, year])
+
+    useEffect(() => {
+      if (selected != null) {
+        void fetchInterviewsForDay(selected)
+      } else {
+        setInterviews([])
+      }
+    }, [selected, fetchInterviewsForDay])
+
+    // load all interviews for the visible month to display markers
+    useEffect(() => {
+      void fetchInterviewsForMonth()
+    }, [fetchInterviewsForMonth])
+
+    async function saveInterviewForDay(day: number) {
+      try {
+        console.debug('[calendar] saving interview', { day, subjectInput, difficultyInput, roundInput })
+        const { data: userData } = await supabase.auth.getUser()
+        const userId = userData?.user?.id
+        if (!userId) throw new Error('Not signed in')
+        const iso = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+        const payload = {
+          user_id: userId,
+          interview_date: iso,
+          subject: subjectInput,
+          difficulty: difficultyInput,
+          round: roundInput,
+          notes: notesInput
+        }
+        const { data, error } = await supabase.from('user_interviews').insert(payload).select()
+        if (error) {
+          console.error('Failed to save interview', error)
+          return false
+        }
+        // refresh list and month map
+        await fetchInterviewsForDay(day)
+        await fetchInterviewsForMonth()
+        // clear form
+        setSubjectInput("")
+        setDifficultyInput('medium')
+        setRoundInput('technical')
+        setNotesInput("")
+        return true
+      } catch (e) {
+        console.error(e)
+        return false
+      }
+    }
+
+    async function updateInterviewStatus(id: string | number, status: string) {
+      try {
+        console.debug('[calendar] updateInterviewStatus', { id, status })
+        const { data, error } = await supabase.from('user_interviews').update({ status }).eq('id', id).select()
+        if (error) {
+          console.error('Failed to update interview status', error)
+          return false
+        }
+        console.debug('[calendar] update result', { data })
+        // refresh day and month
+        if (selected != null) await fetchInterviewsForDay(selected)
+        await fetchInterviewsForMonth()
+        return true
+      } catch (e) {
+        console.error('updateInterviewStatus exception', e)
+        return false
       }
     }
 
@@ -252,12 +377,22 @@ export default function Dashboard() {
                 className={`relative w-5 sm:w-8 h-5 sm:h-8 flex items-center justify-center rounded-full ${cell.type === 'current' ? 'bg-white/5 cursor-pointer' : 'opacity-40'} ${selected === cell.day && cell.type === 'current' ? 'ring-2 ring-emerald-400' : ''}`}
               >
                 <div className="text-[10px] sm:text-sm">{cell.day}</div>
-                {cell.type === 'current' && pending.has(cell.day) && (
-                  <div className="absolute -right-2 -top-2 bg-red-600 rounded-full w-2.5 sm:w-5 h-2.5 sm:h-5 flex items-center justify-center text-[7px] sm:text-[10px]">✕</div>
-                )}
-                {cell.type === 'current' && confirmed.has(cell.day) && (
-                  <div className="absolute -right-2 -top-2 bg-emerald-500 rounded-full w-2.5 sm:w-5 h-2.5 sm:h-5 flex items-center justify-center text-[7px] sm:text-[10px]">✓</div>
-                )}
+                {cell.type === 'current' && (() => {
+                  const dayMap = monthInterviewsMap[cell.day] || []
+                  const hasScheduled = dayMap.length > 0
+                  const hasCompleted = dayMap.some((iv: any) => iv.status === 'completed')
+                  const hasMissed = dayMap.some((iv: any) => iv.status === 'missed')
+                  if (hasCompleted) {
+                    return <div className="absolute -right-2 -top-2 bg-emerald-500 rounded-full w-3 sm:w-5 h-3 sm:h-5 flex items-center justify-center text-[7px] sm:text-[10px]">✓</div>
+                  }
+                  if (hasMissed) {
+                    return <div className="absolute -right-2 -top-2 bg-red-600 rounded-full w-3 sm:w-5 h-3 sm:h-5 flex items-center justify-center text-[7px] sm:text-[10px]">✕</div>
+                  }
+                  if (hasScheduled) {
+                    return <div className="absolute -right-0.5 -top-0.5 bg-emerald-400 rounded-full w-2 h-2 sm:w-2.5 sm:h-2.5" />
+                  }
+                  return null
+                })()}
               </div>
               
             </div>
@@ -265,25 +400,103 @@ export default function Dashboard() {
         </div>
 
         {selected && anchor && (() => {
-          const dd = (
-            <div
-              ref={dropdownRef}
-              className={`${anchorFixed ? 'fixed' : 'absolute'} z-50 w-36 sm:w-44 bg-black/80 border border-white/20 rounded-md p-2 sm:p-3 shadow-lg text-sm`}
-            >
-              <div className="text-xs opacity-80">{selected} {current.toLocaleString(undefined, { month: 'short' })}</div>
-              <div className="mt-1 font-semibold">Frontend</div>
-              <div className="text-xs sm:text-sm opacity-80 mt-1">76% complete</div>
-              <div className="mt-1 text-xs sm:text-sm leading-snug">Work on the layout</div>
-            </div>
-          )
+            const dd = (
+              <div
+                ref={dropdownRef}
+                className={`${anchorFixed ? 'fixed' : 'absolute'} z-50 w-72 sm:w-96 bg-black/80 border border-white/20 rounded-md p-2 sm:p-3 shadow-lg text-sm`}
+              >
+                <div className="text-xs opacity-80">{selected} {current.toLocaleString(undefined, { month: 'short' })}</div>
+
+                <div className="mt-2 mb-2">
+                  <div className="font-semibold mb-1">Scheduled interviews</div>
+                  {loadingInterviews ? (
+                    <div className="text-xs opacity-70">Loading…</div>
+                  ) : interviews.length ? (
+                    <ul className="space-y-2 max-h-40 overflow-y-auto">
+                      {interviews.map((iv: any) => (
+                        <li key={iv.id} className="p-2 rounded bg-black/40 border border-white/10">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-medium">{iv.subject || 'Untitled'}</div>
+                              <div className="text-xs opacity-80">{iv.round} · {iv.difficulty}</div>
+                              {iv.notes && <div className="mt-1 text-xs opacity-70">{iv.notes}</div>}
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              {iv.status === 'completed' && <div className="text-xs text-emerald-400">Completed</div>}
+                              {iv.status === 'missed' && <div className="text-xs text-red-400">Missed</div>}
+                              <div className="flex gap-1">
+                                {iv.status !== 'completed' && (
+                                  <button onClick={async () => await updateInterviewStatus(iv.id, 'completed')} className="text-xs px-2 py-0.5 rounded bg-emerald-600">Mark complete</button>
+                                )}
+                                {iv.status !== 'missed' && (
+                                  <button onClick={async () => await updateInterviewStatus(iv.id, 'missed')} className="text-xs px-2 py-0.5 rounded bg-red-600">Mark missed</button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="text-xs opacity-70">No interviews scheduled</div>
+                  )}
+                </div>
+
+                <div className="mt-2 pt-2 border-t border-white/10 flex items-center justify-between">
+                  <div className="font-semibold">Scheduled</div>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={(ev) => { ev.stopPropagation(); console.debug('[calendar] +Add clicked', { selected }); setShowAddFormModal(true); }} className="px-2 py-1 rounded bg-emerald-600 text-sm">+ Add</button>
+                    <button onClick={() => { setSelected(null); setAnchor(null); setAnchorFixed(false); }} className="px-2 py-1 rounded bg-white/10 text-sm">Close</button>
+                  </div>
+                </div>
+
+                {showAddFormModal && selected && (() => {
+                  const modal = (
+                    <div className="fixed inset-0 z-60 flex items-center justify-center">
+                      <div className="absolute inset-0 bg-black/60" onClick={() => setShowAddFormModal(false)} />
+                      <div ref={addFormRef} className="relative w-full max-w-md p-4 bg-black/80 border border-white/20 rounded-md text-white">
+                        <div className="flex items-center justify-between mb-3">
+                          <button onClick={() => setShowAddFormModal(false)} className="px-2 py-1 rounded bg-white/10">Back</button>
+                          <div className="font-semibold">Add interview — {selected} {current.toLocaleString(undefined, { month: 'short' })}</div>
+                          <div />
+                        </div>
+                        <div>
+                          <input value={subjectInput} onChange={(e) => setSubjectInput(e.target.value)} placeholder="Subject" className="w-full mb-2 rounded px-2 py-1 bg-black/30 border border-white/10" />
+                          <div className="flex gap-2 mb-2">
+                            <select value={difficultyInput} onChange={(e) => setDifficultyInput(e.target.value)} className="flex-1 rounded px-2 py-1 bg-black/30 border border-white/10">
+                              <option value="beginner">Beginner</option>
+                              <option value="intermediate">Intermediate</option>
+                              <option value="advanced">Advanced</option>
+                            </select>
+                            <input value={roundInput} onChange={(e) => setRoundInput(e.target.value)} placeholder="Round (e.g. technical)" className="flex-1 rounded px-2 py-1 bg-black/30 border border-white/10" />
+                          </div>
+                          <textarea value={notesInput} onChange={(e) => setNotesInput(e.target.value)} placeholder="Notes (optional)" className="w-full mb-2 rounded px-2 py-1 bg-black/30 border border-white/10" />
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => setShowAddFormModal(false)} className="px-3 py-1 rounded bg-white/10">Cancel</button>
+                            <button onClick={async () => { if (selected) { await saveInterviewForDay(selected); setShowAddFormModal(false); } }} className="px-3 py-1 rounded bg-emerald-600">Save</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                  try { return createPortal(modal, document.body) } catch (e) { return modal }
+                })()}
+              </div>
+            )
 
           if (anchorFixed) {
             try {
               const ddW = 144
               const leftRaw = anchor.left
+              // For small screens use full-width with side padding and clamp top
+              const topRaw = anchor.top + 6
+              if (window.innerWidth < 640) {
+                const top = Math.min(Math.max(topRaw, 8), Math.max(8, window.innerHeight - 120))
+                return createPortal(React.cloneElement(dd, { style: { left: 8, right: 8, top } }), document.body)
+              }
               const maxLeft = Math.max(8, window.innerWidth - ddW - 8)
               const left = Math.min(Math.max(leftRaw, 8), maxLeft)
-              const top = anchor.top + 6
+              const top = topRaw
               return createPortal(React.cloneElement(dd, { style: { left, top } }), document.body)
             } catch (e) {
               return dd
@@ -414,7 +627,13 @@ export default function Dashboard() {
       }
     }
     load();
-    return () => { mounted = false };
+    function onFavUpdated(e: any) {
+      console.debug('[dashboard] favourites updated event', e?.detail)
+      // re-run load to refresh favourites
+      void load()
+    }
+    window.addEventListener('favourites:updated', onFavUpdated)
+    return () => { window.removeEventListener('favourites:updated', onFavUpdated); mounted = false }
   }, []);
 
   function abbreviate(title: string) {
