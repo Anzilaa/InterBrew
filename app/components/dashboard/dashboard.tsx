@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react"
 import { createPortal } from 'react-dom'
 import "./dashboard.css"
+import { supabase } from "../../../lib/supabaseClient";
 
 function StatCard({
   title,
@@ -326,16 +327,96 @@ export default function Dashboard() {
   ]
 
   // sample per-collection progress (same length as collections)
-  const progress = [72, 30, 55, 20, 90, 45, 60, 12, 78, 34, 56, 18];
+  const [progress, setProgress] = useState<number[]>([72, 30, 55, 20, 90, 45, 60, 12, 78, 34, 56, 18]);
 
-  const favQuestions = [
+  const [favQuestions, setFavQuestions] = useState<string[]>([
     "What is closure in JavaScript?",
     "Explain normalization in databases.",
     "How does HTTP/2 improve performance?",
     "Design an LRU cache.",
     "Explain the CAP theorem.",
     "What is the difference between TCP and UDP?",
-  ]
+  ]);
+
+  const [thisWeek, setThisWeek] = useState<{ xp?: number; badges?: number; leaderboard_rank?: number; modules_completed?: number }>({ xp: 1250 });
+  // load per-user dashboard data from Supabase and update local state (no layout change)
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData?.user?.id;
+        console.debug('[dashboard] signed-in user id:', userId);
+        if (!userId) {
+          console.debug('[dashboard] no signed-in user; dashboard row will not be loaded');
+          return;
+        }
+
+        const { data, error } = await supabase.from('user_dashboards').select('*').eq('user_id', userId).single();
+        if (error) {
+          console.error('Failed to load dashboard row', error);
+          return;
+        }
+        console.debug('[dashboard] loaded dashboard row:', data);
+        if (!mounted) return;
+
+        // update favourite questions
+        if (Array.isArray(data.favourite_questions)) setFavQuestions(data.favourite_questions);
+
+        // update this week metrics
+        if (data.this_week) {
+          const tw = data.this_week;
+          setThisWeek({ xp: tw.xp ?? tw?.xp, badges: tw.badges ?? tw?.badges, leaderboard_rank: tw.leaderboard_rank ?? tw?.leaderboard_rank, modules_completed: tw.modules_completed ?? tw?.modules_completed });
+        }
+
+        // Prefer explicit readiness_score object for per-skill values (seeded values)
+        if (data.readiness_score && typeof data.readiness_score === 'object') {
+          try {
+            const rs = data.readiness_score;
+            const vals = skills.map((s) => {
+              if (typeof rs[s.abbr] === 'number') return rs[s.abbr];
+              if (typeof rs[s.name] === 'number') return rs[s.name];
+              const lc = s.name.toLowerCase();
+              if (typeof rs[lc] === 'number') return rs[lc];
+              return 0;
+            });
+            setProgress(vals);
+          } catch (e) {
+            console.error('Failed to parse readiness_score', e);
+          }
+        } else if (data.graph_data) {
+          // update small progress rings from graph_data if available (fallback)
+          const gd = data.graph_data;
+
+          if (gd.subject && typeof gd.subject === 'object') {
+            // map by collection title names (prefer exact, then lowercase, then abbreviated)
+            const vals = collections.map((c) => {
+              const choices = [c.title, c.title.toLowerCase(), c.title.replace(/\W+/g, '').toUpperCase()];
+              for (const k of choices) {
+                if (gd.subject[k]) {
+                  const arr = gd.subject[k];
+                  return Array.isArray(arr) ? (arr[arr.length - 1] ?? 0) : (typeof arr === 'number' ? arr : 0);
+                }
+              }
+              return 0;
+            });
+            setProgress(vals);
+          } else if (Array.isArray(gd.monthly)) {
+            const latest = gd.monthly[gd.monthly.length - 1] ?? 0;
+            setProgress(collections.map(() => latest));
+          } else if (Array.isArray(gd.weekly)) {
+            const latest = gd.weekly[gd.weekly.length - 1] ?? 0;
+            setProgress(collections.map(() => latest));
+          }
+        }
+      } catch (e) {
+        console.error('Error loading dashboard data', e);
+      }
+    }
+    load();
+    return () => { mounted = false };
+  }, []);
+
   function abbreviate(title: string) {
     const map: Record<string, string> = {
       Frontend: "FE",
@@ -445,10 +526,10 @@ export default function Dashboard() {
             <div>
               <h4 className="text-sm font-semibold mb-2">This week's</h4>
               <div className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
-                <div>Total: XP points - 1250</div>
-                <div>Badges Earned:</div>
+                <div>Total: XP points - {thisWeek.xp ?? '—'}</div>
+                <div>Badges Earned: {thisWeek.badges ?? '—'}</div>
                 <div>Current levels:</div>
-                <div>Leaderboard Rank:</div>
+                <div>Leaderboard Rank: {thisWeek.leaderboard_rank ?? '—'}</div>
               </div>
             </div>
 
