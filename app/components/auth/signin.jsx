@@ -126,7 +126,7 @@ export default function SigninComponent() {
               as="button"
               type="submit"
               color="#3f9371"
-              speed="20s"
+              speed="4s"
               className="w-full flex justify-center py-2 px-4 text-sm font-medium rounded-full text-white bg-emerald-500 hover:bg-emerald-600 transition-colors duration-200"
             >
               Sign in
