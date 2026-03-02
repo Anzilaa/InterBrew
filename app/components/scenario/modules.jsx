@@ -1,0 +1,120 @@
+"use client";
+
+const modules = [
+  {
+    id: 1,
+    title: "Introduction to Interviews",
+    lessons: 8,
+    completed: 8,
+    icon: "🎯",
+    tag: "Foundation",
+  },
+  {
+    id: 2,
+    title: "Behavioral Frameworks",
+    lessons: 12,
+    completed: 9,
+    icon: "🧠",
+    tag: "Core",
+  },
+  {
+    id: 3,
+    title: "System Design Basics",
+    lessons: 10,
+    completed: 4,
+    icon: "🏗",
+    tag: "Technical",
+  },
+  {
+    id: 4,
+    title: "Coding Under Pressure",
+    lessons: 15,
+    completed: 2,
+    icon: "💻",
+    tag: "Technical",
+  },
+  {
+    id: 5,
+    title: "Negotiation & Offers",
+    lessons: 6,
+    completed: 0,
+    icon: "🤝",
+    tag: "Career",
+  },
+];
+
+export default function Modules({ onSelect, selectedModule }) {
+  return (
+    <div className="h-full flex flex-col">
+      <div className="flex items-center justify-between mb-5">
+        <div>
+          <h2 className="text-base font-semibold text-white">Modules</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Track your learning path
+          </p>
+        </div>
+        <span className="text-xs text-gray-500">
+          {modules.filter((m) => m.completed === m.lessons).length}/
+          {modules.length} complete
+        </span>
+      </div>
+
+      <div className="flex flex-col gap-2.5 overflow-y-auto flex-1 pr-1">
+        {modules.map((mod) => {
+          const progress = Math.round((mod.completed / mod.lessons) * 100);
+          const isComplete = mod.completed === mod.lessons;
+
+          return (
+            <button
+              key={mod.id}
+              onClick={() => onSelect?.(mod)}
+              className={`w-full text-left p-3.5 rounded-xl border transition-all duration-200 ${
+                selectedModule?.id === mod.id
+                  ? "bg-white/8 border-white/20"
+                  : "bg-white/3 border-white/8 hover:bg-white/6 hover:border-white/15"
+              }`}
+            >
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-8 h-8 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center text-base">
+                  {mod.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-white truncate">
+                    {mod.title}
+                  </p>
+                  <p className="text-[11px] text-gray-500">
+                    {mod.completed}/{mod.lessons} lessons
+                  </p>
+                </div>
+                <span
+                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                    isComplete
+                      ? "text-white/80 bg-white/10 border-white/20"
+                      : "text-gray-500 bg-white/4 border-white/8"
+                  }`}
+                >
+                  {mod.tag}
+                </span>
+              </div>
+
+              <div className="w-full bg-white/5 rounded-full h-1 overflow-hidden">
+                <div
+                  className="h-1 rounded-full bg-white/40 transition-all duration-500"
+                  style={{ width: `${progress}%` }}
+                />
+              </div>
+              <div className="flex justify-between mt-1.5">
+                <span className="text-[10px] text-gray-600">Progress</span>
+                <span
+                  className={`text-[10px] font-medium ${isComplete ? "text-white/70" : "text-gray-500"}`}
+                >
+                  {progress}%
+                </span>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
