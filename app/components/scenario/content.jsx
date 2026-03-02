@@ -1,79 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import "./content.css";
-
-const overviewStats = [
-  { label: "Scenarios Completed", value: "48", sub: "+21 from last month" },
-  { label: "Avg Score", value: "82.4", sub: "+5.29% from last month" },
-  { label: "Practice Hours", value: "36h", sub: "+4h from last month" },
-];
-
-const recentActivity = [
-  {
-    id: 1,
-    scenario: "Performance Feedback",
-    score: 100,
-    date: "01.03.2026",
-    badge: "Outstanding",
-  },
-  {
-    id: 2,
-    scenario: "Team Collaboration",
-    score: 88,
-    date: "28.02.2026",
-    badge: "Excellent",
-  },
-  {
-    id: 3,
-    scenario: "Project Deep Dive",
-    score: 75,
-    date: "26.02.2026",
-    badge: "Good",
-  },
-  {
-    id: 4,
-    scenario: "Behavioral HR Round Practice",
-    score: 82,
-    date: "24.02.2026",
-    badge: "Excellent",
-  },
-  {
-    id: 5,
-    scenario: "Leadership Scenarios",
-    score: 70,
-    date: "22.02.2026",
-    badge: "Good",
-  },
-  {
-    id: 6,
-    scenario: "Ethical Decision Making",
-    score: 65,
-    date: "20.02.2026",
-    badge: "Average",
-  },
-  {
-    id: 7,
-    scenario: "Time & Priority Management",
-    score: 78,
-    date: "18.02.2026",
-    badge: "Good",
-  },
-  {
-    id: 8,
-    scenario: "Salary Offer Discussions",
-    score: 55,
-    date: "15.02.2026",
-    badge: "Average",
-  },
-  {
-    id: 9,
-    scenario: "Technical Round Pressure",
-    score: 91,
-    date: "12.02.2026",
-    badge: "Outstanding",
-  },
-];
 
 const badgeColors = {
   Outstanding: "text-sky-300 bg-sky-400/10 border-sky-500/20",
@@ -99,6 +28,55 @@ export default function Content({ selectedScenario }) {
   const [hoverIdx, setHoverIdx] = useState(null);
   const svgRef = useRef(null);
 
+  const [overviewStats, setOverviewStats] = useState([]);
+  const [recentActivity, setRecentActivity] = useState([]);
+  const [insights, setInsights] = useState([]);
+  const [chartData, setChartData] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchContentData() {
+      if (!supabase) {
+        console.warn("Supabase client not configured");
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const [statsRes, activityRes, insightsRes, chartRes] =
+          await Promise.all([
+            supabase
+              .from("overview_stats")
+              .select("*")
+              .order("id", { ascending: true }),
+            supabase
+              .from("practice_history")
+              .select("*")
+              .order("date", { ascending: false }),
+            supabase
+              .from("ai_insights")
+              .select("*")
+              .order("id", { ascending: true }),
+            supabase
+              .from("performance_chart")
+              .select("score")
+              .order("recorded_at", { ascending: true }),
+          ]);
+
+        if (statsRes.data) setOverviewStats(statsRes.data);
+        if (activityRes.data) setRecentActivity(activityRes.data);
+        if (insightsRes.data) setInsights(insightsRes.data);
+        if (chartRes.data) setChartData(chartRes.data.map((r) => r.score));
+      } catch (err) {
+        console.error("Failed to fetch content data:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchContentData();
+  }, []);
+
   return (
     <div className="h-full flex flex-col gap-5">
       {/* Header */}
@@ -106,7 +84,7 @@ export default function Content({ selectedScenario }) {
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-semibold text-white">
-              {selectedScenario ? selectedScenario.title : "Scenario Practice"}
+              {selectedScenario ? selectedScenario.title : "Overall"}
             </h1>
           </div>
           <p className="text-xs text-gray-500 mt-0.5">
@@ -143,14 +121,64 @@ export default function Content({ selectedScenario }) {
       {tab === "overview" && (
         <div className="flex-1 flex flex-col gap-3 min-h-0">
           <div className="grid grid-cols-3 gap-3">
-            {overviewStats.map((stat) => (
+            {[
+              {
+                label: "Modules Done",
+                value:
+                  overviewStats.find((s) =>
+                    s.label?.toLowerCase().includes("module"),
+                  )?.value ?? "—",
+                sub:
+                  overviewStats.find((s) =>
+                    s.label?.toLowerCase().includes("module"),
+                  )?.sub ?? null,
+                color: "text-white",
+              },
+              {
+                label: "Avg Score",
+                value:
+                  overviewStats.find(
+                    (s) =>
+                      s.label?.toLowerCase().includes("avg") ||
+                      s.label?.toLowerCase().includes("score"),
+                  )?.value ??
+                  (chartData.length >= 2
+                    ? (
+                        chartData.reduce((a, b) => a + b, 0) / chartData.length
+                      ).toFixed(1)
+                    : "—"),
+                sub:
+                  overviewStats.find(
+                    (s) =>
+                      s.label?.toLowerCase().includes("avg") ||
+                      s.label?.toLowerCase().includes("score"),
+                  )?.sub ?? null,
+                color: "text-white",
+              },
+              {
+                label: "Hours Spent",
+                value:
+                  overviewStats.find((s) =>
+                    s.label?.toLowerCase().includes("hour"),
+                  )?.value ?? "—",
+                sub:
+                  overviewStats.find((s) =>
+                    s.label?.toLowerCase().includes("hour"),
+                  )?.sub ?? null,
+                color: "text-white",
+              },
+            ].map((stat) => (
               <div
                 key={stat.label}
                 className="bg-white/3 border border-white/8 rounded-xl p-3 hover:border-emerald-500/30 transition-colors duration-200"
               >
                 <p className="text-xs text-gray-500 mb-0.5">{stat.label}</p>
-                <p className="text-xl font-semibold text-white">{stat.value}</p>
-                <p className="text-xs text-gray-500">↑ {stat.sub}</p>
+                <p className={`text-xl font-semibold ${stat.color}`}>
+                  {stat.value}
+                </p>
+                {stat.sub && (
+                  <p className="text-xs text-gray-500">↑ {stat.sub}</p>
+                )}
               </div>
             ))}
           </div>
@@ -169,11 +197,15 @@ export default function Content({ selectedScenario }) {
 
             <div className="flex-1 min-h-0 relative">
               {(() => {
-                const data = [
-                  55, 62, 48, 65, 58, 72, 60, 78, 55, 70, 80, 65, 74, 58, 82,
-                  68, 76, 60, 88, 72, 65, 78, 55, 70, 75, 82, 68, 91, 78, 72,
-                  60, 68, 58, 72, 65, 80, 70, 76, 62, 74, 68, 58, 72, 65, 70,
-                ];
+                const data =
+                  chartData.length >= 2
+                    ? chartData
+                    : [
+                        55, 62, 48, 65, 58, 72, 60, 78, 55, 70, 80, 65, 74, 58,
+                        82, 68, 76, 60, 88, 72, 65, 78, 55, 70, 75, 82, 68, 91,
+                        78, 72, 60, 68, 58, 72, 65, 80, 70, 76, 62, 74, 68, 58,
+                        72, 65, 70,
+                      ];
                 const w = 500,
                   h = 100;
                 const min = Math.min(...data) - 5;
@@ -316,27 +348,37 @@ export default function Content({ selectedScenario }) {
             <h3 className="text-sm font-medium text-white">Scenario List</h3>
           </div>
           <div className="content-scroll flex flex-col gap-2 overflow-y-auto flex-1 pr-1">
-            {recentActivity.map((item) => (
-              <div
-                key={item.id}
-                className="flex items-center gap-4 p-3 rounded-xl bg-white/3 border border-white/8 hover:border-emerald-500/30 transition-colors duration-150"
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-white font-medium truncate">
-                    {item.scenario}
-                  </p>
-                  <p className="text-xs text-gray-600">{item.date}</p>
-                </div>
-                <div className="w-36">
-                  <ScoreBar score={item.score} />
-                </div>
-                <span
-                  className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${badgeColors[item.badge]}`}
+            {loading ? (
+              <p className="text-xs text-gray-500 text-center mt-4">
+                Loading history...
+              </p>
+            ) : recentActivity.length === 0 ? (
+              <p className="text-xs text-gray-500 text-center mt-4">
+                No practice history yet.
+              </p>
+            ) : (
+              recentActivity.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex items-center gap-4 p-3 rounded-xl bg-white/3 border border-white/8 hover:border-emerald-500/30 transition-colors duration-150"
                 >
-                  {item.badge}
-                </span>
-              </div>
-            ))}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white font-medium truncate">
+                      {item.scenario}
+                    </p>
+                    <p className="text-xs text-gray-600">{item.date}</p>
+                  </div>
+                  <div className="w-36">
+                    <ScoreBar score={item.score} />
+                  </div>
+                  <span
+                    className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${badgeColors[item.badge]}`}
+                  >
+                    {item.badge}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       )}
@@ -346,54 +388,37 @@ export default function Content({ selectedScenario }) {
         <div className="bg-white/3 border border-white/8 rounded-2xl p-5 flex-1 min-h-0 flex flex-col">
           <h3 className="text-sm font-medium text-white mb-3">AI Insights</h3>
           <div className="content-scroll flex flex-col gap-3 overflow-y-auto flex-1 pr-1">
-            {[
-              {
-                title: "Strongest Area",
-                value: "Technical Round Pressure",
-                note: "Avg score 91 across 3 sessions",
-                icon: "🏆",
-              },
-              {
-                title: "Needs Improvement",
-                value: "Salary Offer Discussions",
-                note: "Score dropped 4pts this week",
-                icon: "📈",
-              },
-              {
-                title: "Recommended Next",
-                value: "Crisis Management",
-                note: "Based on your current level",
-                icon: "🎯",
-              },
-              {
-                title: "Consistency",
-                value: "Behavioral HR Round Practice",
-                note: "3 sessions with stable scores",
-                icon: "🔄",
-              },
-              {
-                title: "Quick Win",
-                value: "Time & Priority Management",
-                note: "Only 2 sessions away from completion",
-                icon: "⚡",
-              },
-            ].map((insight) => (
-              <div
-                key={insight.title}
-                className="flex items-start gap-3 p-4 rounded-xl bg-white/3 border border-white/8 hover:border-emerald-500/30 transition-colors duration-150"
-              >
-                <div className="text-2xl">{insight.icon}</div>
-                <div>
-                  <p className="text-xs text-gray-500 font-medium">
-                    {insight.title}
-                  </p>
-                  <p className="text-sm text-white font-medium mt-0.5">
-                    {insight.value}
-                  </p>
-                  <p className="text-xs text-gray-600 mt-0.5">{insight.note}</p>
+            {loading ? (
+              <p className="text-xs text-gray-500 text-center mt-4">
+                Loading insights...
+              </p>
+            ) : insights.length === 0 ? (
+              <p className="text-xs text-gray-500 text-center mt-4">
+                No insights available yet.
+              </p>
+            ) : (
+              insights.map((insight) => (
+                <div
+                  key={insight.title}
+                  className="flex items-start gap-3 p-4 rounded-xl bg-white/3 border border-white/8 hover:border-emerald-500/30 transition-colors duration-150"
+                >
+                  {insight.icon && (
+                    <div className="text-2xl">{insight.icon}</div>
+                  )}
+                  <div>
+                    <p className="text-xs text-gray-500 font-medium">
+                      {insight.title}
+                    </p>
+                    <p className="text-sm text-white font-medium mt-0.5">
+                      {insight.value}
+                    </p>
+                    <p className="text-xs text-gray-600 mt-0.5">
+                      {insight.note}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       )}
