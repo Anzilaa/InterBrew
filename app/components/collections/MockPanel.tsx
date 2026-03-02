@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 
-export default function MockPanel({ topic, onClose }: { topic: string; onClose: () => void }) {
+export default function MockPanel({ topic, onClose, onStart }: { topic: string; onClose: () => void; onStart?: (d: string) => void }) {
   const levels = ["Beginner", "Intermediate", "Advanced"];
   const rounds = ["Aptitude", "Verbal", "Technical"];
   const [completed, setCompleted] = useState<Record<string, Set<string>>>(() => {
@@ -39,8 +39,24 @@ export default function MockPanel({ topic, onClose }: { topic: string; onClose: 
           {levels.map((lvl) => (
             <div key={lvl} className="rounded-md p-4 bg-black/40 border border-white/10">
               <div className="flex items-center justify-between">
-                <div className="font-medium">{lvl}</div>
-                {lvl === 'Beginner' && <div className="text-sm opacity-80">Report</div>}
+                <div
+                  className="font-medium cursor-pointer"
+                  onClick={() => onStart?.(lvl)}
+                >
+                  {lvl}
+                </div>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onStart?.(lvl);
+                    }}
+                    className="px-3 py-1 rounded-md bg-blue-600 text-white text-sm mr-2"
+                  >
+                    Start
+                  </button>
+                  {lvl === 'Beginner' && <div className="text-sm opacity-80">Report</div>}
+                </div>
               </div>
               <ul className="mt-3 space-y-2">
                 {rounds.map((r) => (

@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import MockPanel from "./MockPanel";
+import MockInterviewPanel from "../mock_int/mock_int";
 
 const sections = [
   {
@@ -29,12 +30,12 @@ function SmallCollectionCard({ title, onMock }: { title: string; onMock: (t: str
   return (
     <div className="group shrink-0 rounded-lg p-8 min-w-[24rem] sm:min-w-104 text-white bg-transparent recommended-card card-outline relative overflow-hidden" style={{minHeight: 180}}>
       {/* Visible center content */}
-      <div className="flex items-center justify-center h-full">
+      <div className="flex items-center justify-center h-full z-10">
         <div className="text-lg sm:text-xl font-semibold opacity-100 group-hover:opacity-0 transition-opacity duration-200">{title}</div>
       </div>
 
       {/* Hover overlay */}
-      <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-4 px-6 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+      <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-4 px-6 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-0 group-hover:z-20">
         <div className="text-xl font-semibold">{title}</div>
         <div className="text-sm opacity-80 text-center">{desc}</div>
         <div className="flex gap-3 mt-2">
@@ -50,6 +51,8 @@ function SmallCollectionCard({ title, onMock }: { title: string; onMock: (t: str
 
 export default function Collections({ className = "" }: { className?: string }) {
   const [mockTopic, setMockTopic] = useState<string | null>(null);
+  const [mockDifficulty, setMockDifficulty] = useState<string | null>(null);
+  const [interviewTopic, setInterviewTopic] = useState<string | null>(null);
 
   return (
     <section className={className}>
@@ -71,7 +74,30 @@ export default function Collections({ className = "" }: { className?: string }) 
         ))}
       </div>
 
-      {mockTopic && <MockPanel topic={mockTopic} onClose={() => setMockTopic(null)} />}
+      {mockTopic && (
+        <MockPanel
+          topic={mockTopic}
+          onClose={() => setMockTopic(null)}
+          onStart={(difficulty: string) => {
+            console.log("Mock start requested:", difficulty);
+            // Keep the chosen topic so we can pass it into the interview panel
+            setInterviewTopic(mockTopic);
+            setMockTopic(null);
+            setMockDifficulty(difficulty);
+          }}
+        />
+      )}
+
+      {mockDifficulty && (
+        <MockInterviewPanel
+          difficulty={mockDifficulty}
+          topic={interviewTopic || undefined}
+          onClose={() => {
+            setMockDifficulty(null);
+            setInterviewTopic(null);
+          }}
+        />
+      )}
     </section>
   );
 }

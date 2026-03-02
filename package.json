@@ -15,6 +15,7 @@
     "camera-controls": "^3.1.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "groq-sdk": "^0.37.0",
     "lucide-react": "^0.574.0",
     "motion": "^12.34.1",
     "next": "16.1.6",
