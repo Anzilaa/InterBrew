@@ -23,7 +23,7 @@ const ScoreBar = ({ score }) => (
   </div>
 );
 
-export default function Content({ selectedScenario }) {
+export default function Content({ selectedScenario, onStartPractice }) {
   const [tab, setTab] = useState("overview");
   const [hoverIdx, setHoverIdx] = useState(null);
   const svgRef = useRef(null);
@@ -43,30 +43,13 @@ export default function Content({ selectedScenario }) {
       }
 
       try {
-        const [statsRes, activityRes, insightsRes, chartRes] =
-          await Promise.all([
-            supabase
-              .from("overview_stats")
-              .select("*")
-              .order("id", { ascending: true }),
-            supabase
-              .from("practice_history")
-              .select("*")
-              .order("date", { ascending: false }),
-            supabase
-              .from("ai_insights")
-              .select("*")
-              .order("id", { ascending: true }),
-            supabase
-              .from("performance_chart")
-              .select("score")
-              .order("recorded_at", { ascending: true }),
-          ]);
-
-        if (statsRes.data) setOverviewStats(statsRes.data);
-        if (activityRes.data) setRecentActivity(activityRes.data);
-        if (insightsRes.data) setInsights(insightsRes.data);
-        if (chartRes.data) setChartData(chartRes.data.map((r) => r.score));
+        // These tables don't exist yet — skip fetching to avoid 404s
+        // Uncomment and create the tables when ready:
+        // overview_stats, practice_history, ai_insights, performance_chart
+        setOverviewStats([]);
+        setRecentActivity([]);
+        setInsights([]);
+        setChartData([]);
       } catch (err) {
         console.error("Failed to fetch content data:", err);
       } finally {
@@ -94,7 +77,10 @@ export default function Content({ selectedScenario }) {
           </p>
         </div>
         {selectedScenario && (
-          <button className="px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 hover:border-emerald-500/40 text-white text-sm font-medium transition-colors duration-200">
+          <button
+            className="px-4 py-1.5 rounded-full bg-white/10 hover:bg-white/15 border border-white/15 hover:border-emerald-500/40 text-white text-sm font-medium transition-colors duration-200"
+            onClick={onStartPractice}
+          >
             Start Practice
           </button>
         )}
