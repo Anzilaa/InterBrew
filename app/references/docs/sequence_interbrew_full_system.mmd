@@ -1,0 +1,35 @@
+sequenceDiagram
+    autonumber
+    actor User
+    participant DB as Dashboard
+    participant Modules as Learning<br/>Modules
+    participant Backend as Backend
+    participant AI as Groq API
+    participant Supabase as Supabase
+
+    User->>DB: 1. Opens Dashboard
+    DB->>Supabase: Fetch user data
+    Supabase-->>DB: Return stats & readiness
+    DB-->>User: Display analytics
+
+    User->>Modules: 2. Select Learning Path
+    Modules->>Backend: Request content
+    Backend->>Supabase: Get module data
+    Supabase-->>Modules: Return content
+    Modules-->>User: Display module
+
+    User->>Modules: 3. Take Mock Interview / Solve Challenge
+    Modules->>AI: Send user input
+    AI-->>Modules: Return evaluation & feedback
+    Modules-->>User: Display result
+
+    Modules->>Backend: 4. Update progress
+    Backend->>Supabase: Save: streak +1, badges, XP
+    Supabase-->>Modules: Confirmed
+    Modules-->>User: Show rewards earned
+
+    User->>DB: 5. View updated profile
+    DB->>Supabase: Refresh stats
+    Supabase-->>DB: Return updated data
+    DB-->>👤User: Display new readiness & leaderboard
+
