@@ -5,33 +5,74 @@ import { supabase } from "../../../lib/supabaseClient";
 import Scenarios from "../../components/scenario/scenarios";
 import Content from "../../components/scenario/content";
 import Modules from "../../components/scenario/modules";
+import LessonView from "../../components/scenario/lesson";
 
 export default function ScenarioPracticePage() {
-  const [selectedScenario, setSelectedScenario] = useState(null);
+  const [selectedScenario, setSelectedScenario] = useState<any>(null);
   const [practiceMode, setPracticeMode] = useState(false);
+  const [activeModule, setActiveModule] = useState<any>(null);
 
   return (
     <div className="h-[calc(100vh-4rem)] overflow-hidden bg-[#0c0c0c] p-5">
       {practiceMode ? (
         <div className="bg-[#141414] border border-white/8 rounded-2xl p-8 h-full overflow-hidden flex flex-col">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-xl font-semibold text-white">
-                Practice: {selectedScenario?.title || "Modules"}
-              </h2>
-              <p className="text-sm text-gray-500 mt-1">
-                {selectedScenario?.description ||
-                  "Select a module to begin practice"}
-              </p>
-            </div>
-            <button
-              className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-white text-sm font-medium hover:bg-white/15 transition"
-              onClick={() => setPracticeMode(false)}
-            >
-              Back to Overview
-            </button>
-          </div>
-          <PracticeModules selectedScenario={selectedScenario} />
+          {activeModule ? (
+            <LessonView
+              module={activeModule}
+              onBack={() => setActiveModule(null)}
+              onComplete={async () => {
+                // Mark module as completed in DB only if logged in
+                if (supabase) {
+                  try {
+                    const {
+                      data: { user },
+                    } = await supabase.auth.getUser();
+                    if (user) {
+                      await supabase.from("user_module_progress").upsert(
+                        {
+                          user_id: user.id,
+                          module_id: activeModule.id,
+                          completed: true,
+                          completed_at: new Date().toISOString(),
+                        },
+                        { onConflict: "user_id,module_id" },
+                      );
+                    }
+                  } catch (err) {
+                    console.warn(
+                      "Could not save progress (not logged in):",
+                      err,
+                    );
+                  }
+                }
+                setActiveModule(null);
+              }}
+            />
+          ) : (
+            <>
+              <div className="flex items-center justify-between mb-6">
+                <div>
+                  <h2 className="text-xl font-semibold text-white">
+                    Practice: {selectedScenario?.title || "Modules"}
+                  </h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {selectedScenario?.description ||
+                      "Select a module to begin practice"}
+                  </p>
+                </div>
+                <button
+                  className="px-4 py-2 rounded-xl bg-white/10 border border-white/20 text-white text-sm font-medium hover:bg-white/15 transition mr-4"
+                  onClick={() => setPracticeMode(false)}
+                >
+                  Back to Overview
+                </button>
+              </div>
+              <PracticeModules
+                selectedScenario={selectedScenario}
+                onLearn={(mod) => setActiveModule(mod)}
+              />
+            </>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-[1fr_420px] gap-4 h-full">
@@ -57,27 +98,43 @@ export default function ScenarioPracticePage() {
 }
 
 // Practice Modules Component
-function PracticeModules({ selectedScenario }) {
-  const [modules, setModules] = useState([]);
+function PracticeModules({
+  selectedScenario,
+  onLearn,
+}: {
+  selectedScenario: any;
+  onLearn: (mod: any) => void;
+}) {
+  const [modules, setModules] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [completedIds, setCompletedIds] = useState(new Set());
-  const [userId, setUserId] = useState(null);
+  const [completedIds, setCompletedIds] = useState<Set<string>>(new Set());
+  const [userId, setUserId] = useState<string | null>(null);
+  const [authResolved, setAuthResolved] = useState(false);
 
-  // Get current user
+  // Get current user — always resolve even if not logged in
   useEffect(() => {
     async function getUser() {
-      if (!supabase) return;
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (user) setUserId(user.id);
+      if (!supabase) {
+        setAuthResolved(true);
+        return;
+      }
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) setUserId(user.id);
+      } catch {
+        // Not logged in — that's fine
+      } finally {
+        setAuthResolved(true);
+      }
     }
     getUser();
   }, []);
 
-  // Fetch modules and completion status — only run once userId is available
+  // Fetch modules — runs once auth is resolved (logged in or not)
   useEffect(() => {
-    if (!userId) return;
+    if (!authResolved) return;
 
     async function fetchModules() {
       if (!supabase) {
@@ -105,20 +162,25 @@ function PracticeModules({ selectedScenario }) {
         } else if (data) {
           setModules(data);
 
-          // Fetch completion status for this user
-          const moduleIds = data.map((m) => m.id);
-          if (moduleIds.length > 0) {
-            const { data: progressData, error: progressError } = await supabase
-              .from("user_module_progress")
-              .select("module_id")
-              .eq("user_id", userId)
-              .eq("completed", true)
-              .in("module_id", moduleIds);
+          // Fetch completion status only if logged in
+          if (userId) {
+            const moduleIds = data.map((m: any) => m.id);
+            if (moduleIds.length > 0) {
+              const { data: progressData, error: progressError } =
+                await supabase
+                  .from("user_module_progress")
+                  .select("module_id")
+                  .eq("user_id", userId)
+                  .eq("completed", true)
+                  .in("module_id", moduleIds);
 
-            if (progressError) {
-              console.error("Error fetching progress:", progressError);
-            } else if (progressData) {
-              setCompletedIds(new Set(progressData.map((p) => p.module_id)));
+              if (progressError) {
+                console.error("Error fetching progress:", progressError);
+              } else if (progressData) {
+                setCompletedIds(
+                  new Set(progressData.map((p: any) => p.module_id)),
+                );
+              }
             }
           }
         }
@@ -130,7 +192,7 @@ function PracticeModules({ selectedScenario }) {
     }
 
     fetchModules();
-  }, [selectedScenario, userId]);
+  }, [selectedScenario, authResolved, userId]);
 
   if (loading) {
     return (
@@ -194,14 +256,14 @@ function PracticeModules({ selectedScenario }) {
                   </div>
                 </div>
                 <button
+                  onClick={() => onLearn?.(module)}
                   className={`px-7 py-1.5 rounded-lg border text-sm font-medium transition-all duration-200 shrink-0 mr-3 ${
                     isComplete
-                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400 cursor-default"
+                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/25"
                       : "bg-white/8 border-white/15 text-white hover:bg-white/12 hover:border-emerald-500/40"
                   }`}
-                  disabled={isComplete}
                 >
-                  {isComplete ? "Completed" : "Learn"}
+                  {isComplete ? "Reattempt" : "Learn"}
                 </button>
               </div>
             </div>

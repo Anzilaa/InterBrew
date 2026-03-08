@@ -27,9 +27,31 @@ export default function Scenarios({ onSelect, selected }) {
   const [completedOnly, setCompletedOnly] = useState(false);
   const [scenarios, setScenarios] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [userId, setUserId] = useState(null);
 
-  // Fetch scenarios from Supabase
+  // Get current user
   useEffect(() => {
+    async function getUser() {
+      if (!supabase) {
+        setUserId("__none__");
+        return;
+      }
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        setUserId(user ? user.id : "__none__");
+      } catch {
+        setUserId("__none__");
+      }
+    }
+    getUser();
+  }, []);
+
+  // Fetch scenarios + compute completion % from user_module_progress
+  useEffect(() => {
+    if (!userId) return;
+
     async function fetchScenarios() {
       if (!supabase) {
         console.warn("Supabase client not configured");
@@ -38,21 +60,60 @@ export default function Scenarios({ onSelect, selected }) {
       }
 
       try {
-        const { data, error } = await supabase
+        // Fetch scenarios
+        const { data: scenarioData, error: scenarioError } = await supabase
           .from("scenarios")
           .select("*")
           .order("id", { ascending: true });
 
-        if (error) {
-          console.error("Error fetching scenarios from Supabase:", error);
-        } else if (data && data.length > 0) {
-          // Add progress field if not present (default to 0)
-          const scenariosWithProgress = data.map((scenario) => ({
-            ...scenario,
-            progress: scenario.progress ?? 0,
-          }));
-          setScenarios(scenariosWithProgress);
+        if (scenarioError) {
+          console.error("Error fetching scenarios:", scenarioError);
+          setLoading(false);
+          return;
         }
+
+        if (!scenarioData || scenarioData.length === 0) {
+          setScenarios([]);
+          setLoading(false);
+          return;
+        }
+
+        // Fetch all modules to know total per scenario
+        const { data: modulesData } = await supabase
+          .from("modules")
+          .select("id, scenario_id");
+
+        // Fetch user's completed modules (only if logged in)
+        let completedModuleIds = new Set();
+        if (userId !== "__none__") {
+          const { data: progressData } = await supabase
+            .from("user_module_progress")
+            .select("module_id")
+            .eq("user_id", userId)
+            .eq("completed", true);
+
+          completedModuleIds = new Set(
+            (progressData || []).map((p) => p.module_id),
+          );
+        }
+
+        // Compute progress per scenario
+        const scenariosWithProgress = scenarioData.map((scenario) => {
+          const scenarioModules = (modulesData || []).filter(
+            (m) => m.scenario_id === scenario.id,
+          );
+          const totalModules = scenarioModules.length;
+          const completedModules = scenarioModules.filter((m) =>
+            completedModuleIds.has(m.id),
+          ).length;
+          const progress =
+            totalModules > 0
+              ? Math.round((completedModules / totalModules) * 100)
+              : 0;
+          return { ...scenario, progress };
+        });
+
+        setScenarios(scenariosWithProgress);
       } catch (err) {
         console.error("Failed to connect to Supabase:", err);
       } finally {
@@ -61,26 +122,28 @@ export default function Scenarios({ onSelect, selected }) {
     }
 
     fetchScenarios();
-  }, []);
+  }, [userId]);
 
   const ordered = useMemo(() => {
-    const withProgress = scenarios
-      .filter((s) => s.progress > 0)
+    const inProgress = scenarios
+      .filter((s) => s.progress > 0 && s.progress < 100)
       .sort((a, b) => b.progress - a.progress);
-    const noProgress = scenarios.filter((s) => s.progress === 0);
-    return [...withProgress, ...noProgress];
+    const completed = scenarios.filter((s) => s.progress === 100);
+    const notStarted = scenarios.filter((s) => s.progress === 0);
+    return [...inProgress, ...notStarted, ...completed];
   }, [scenarios]);
 
   const [shuffled, setShuffled] = useState(ordered);
 
   useEffect(() => {
-    const withProgress = scenarios
-      .filter((s) => s.progress > 0)
+    const inProgress = scenarios
+      .filter((s) => s.progress > 0 && s.progress < 100)
       .sort((a, b) => b.progress - a.progress);
-    const noProgress = [...scenarios.filter((s) => s.progress === 0)].sort(
+    const completed = scenarios.filter((s) => s.progress === 100);
+    const notStarted = [...scenarios.filter((s) => s.progress === 0)].sort(
       () => Math.random() - 0.5,
     );
-    setShuffled([...withProgress, ...noProgress]);
+    setShuffled([...inProgress, ...notStarted, ...completed]);
   }, [scenarios]);
   const visible = shuffled
     .filter(
