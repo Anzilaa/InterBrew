@@ -5,24 +5,17 @@ import Link from "next/link";
 import MockPanel from "./MockPanel";
 import MockInterviewPanel from "../mock_int/mock_int";
 
-const sections = [
-  {
-    title: "Domains",
-    items: ["Frontend", "Backend", "Data Science"],
-  },
-  {
-    title: "Database",
-    items: ["MongoDB", "SQL"],
-  },
-  {
-    title: "DSA",
-    items: ["Data Structure", "Analysis Of Algorithm", "Time Complexity"],
-  },
-  {
-    title: "Extras",
-    items: ["Operating System", "Computer Network"],
-  },
-];
+import { supabase } from "../../../lib/supabaseClient";
+
+type CollectionRow = {
+  id: string;
+  title: string;
+  slug: string;
+  description?: string | null;
+  section?: string | null;
+  order?: number | null;
+};
+
 
 function SmallCollectionCard({ title, onMock }: { title: string; onMock: (t: string) => void }) {
   const desc = `${title} Description`;
@@ -52,6 +45,42 @@ function SmallCollectionCard({ title, onMock }: { title: string; onMock: (t: str
 export default function Collections({ className = "" }: { className?: string }) {
   const [mockTopic, setMockTopic] = useState<string | null>(null);
   const [mockDifficulty, setMockDifficulty] = useState<string | null>(null);
+  const [sections, setSections] = useState<Array<{ title: string; items: string[] }>>([]);
+  const [loading, setLoading] = useState(true);
+
+  React.useEffect(() => {
+    let mounted = true;
+    async function load() {
+      setLoading(true);
+      // avoid specifying incorrect generics for supabase.from() in this JS-configured client
+      const res = await supabase.from('collections').select('*').order('section', { ascending: true }).order('order', { ascending: true });
+      const data = res.data as CollectionRow[] | null;
+      const error = res.error;
+      if (error) {
+        console.error('Error loading collections', error);
+        setLoading(false);
+        return;
+      }
+
+      const grouped: Record<string, string[]> = {};
+      (data || []).forEach((r) => {
+        const section = r.section || 'General';
+        if (!grouped[section]) grouped[section] = [];
+        grouped[section].push(r.title);
+      });
+
+      const mapped = Object.keys(grouped).map((k) => ({ title: k, items: grouped[k] }));
+      if (mounted) {
+        setSections(mapped);
+        setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
   const [interviewTopic, setInterviewTopic] = useState<string | null>(null);
 
   return (
@@ -59,19 +88,23 @@ export default function Collections({ className = "" }: { className?: string }) 
       <h1 className="mb-6 text-3xl font-semibold">Collections</h1>
 
       <div className="space-y-6">
-        {sections.map((s) => (
-          <div key={s.title}>
-            <h2 className="mb-3 text-lg font-semibold">{s.title}</h2>
+        {loading ? (
+          <div className="opacity-60">Loading collections…</div>
+        ) : (
+          sections.map((s) => (
+            <div key={s.title}>
+              <h2 className="mb-3 text-lg font-semibold">{s.title}</h2>
 
-            <div className="rounded-2xl overflow-hidden">
-              <div className="flex gap-4 overflow-x-auto pl-0 pr-2 py-2 scrollbar-hide">
-                {s.items.map((it) => (
-                  <SmallCollectionCard key={it} title={it} onMock={(t) => setMockTopic(t)} />
-                ))}
+              <div className="rounded-2xl overflow-hidden">
+                <div className="flex gap-4 overflow-x-auto pl-0 pr-2 py-2 scrollbar-hide">
+                  {s.items.map((it) => (
+                    <SmallCollectionCard key={it} title={it} onMock={(t) => setMockTopic(t)} />
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
       {mockTopic && (

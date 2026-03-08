@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { useSpeech } from "./useSpeech";
+import { supabase } from "../../../lib/supabaseClient";
 
 export default function MockInterviewPanel({ difficulty, onClose, topic }) {
   const [history, setHistory] = useState([]);
@@ -10,6 +11,38 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
   const finishedRef = useRef(false);
   const systemPromptRef = useRef(null);
   const [started, setStarted] = useState(false);
+  const [favAdded, setFavAdded] = useState([]);
+
+  async function addToFavourites(question) {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (!userId) throw new Error('Not signed in');
+
+      const { data, error } = await supabase.from('user_dashboards').select('favourite_questions').eq('user_id', userId).single();
+      if (error) {
+        console.error('Failed to fetch dashboard row', error);
+        return false;
+      }
+      const favs = Array.isArray(data?.favourite_questions) ? data.favourite_questions : [];
+      if (favs.includes(question)) {
+        setFavAdded((s) => [...s, question]);
+        return true;
+      }
+      const newFavs = [...favs, question];
+      const { error: upErr } = await supabase.from('user_dashboards').update({ favourite_questions: newFavs }).eq('user_id', userId);
+      if (upErr) {
+        console.error('Failed to update favourites', upErr);
+        return false;
+      }
+      try { window.dispatchEvent(new CustomEvent('favourites:updated', { detail: { question } })); } catch (e) {}
+      setFavAdded((s) => [...s, question]);
+      return true;
+    } catch (e) {
+      console.error('addToFavourites error', e);
+      return false;
+    }
+  }
 
   // Initialize our custom speech hook
   const { isListening, startListening, stopListening, speak } = useSpeech(async (userText) => {
@@ -222,6 +255,15 @@ export default function MockInterviewPanel({ difficulty, onClose, topic }) {
                 <strong>{msg.role === "user" ? "You: " : "AI: "}</strong>
                 {msg.content}
               </span>
+              {msg.role === "assistant" && (
+                <button
+                  onClick={async (e) => { e.stopPropagation(); await addToFavourites(msg.content); }}
+                  className={`ml-2 text-lg px-1 py-0.5 rounded ${favAdded.includes(msg.content) ? 'text-amber-400' : 'text-gray-400 hover:text-amber-400'}`}
+                  aria-label="Add to favourites"
+                >
+                  {favAdded.includes(msg.content) ? '★' : '☆'}
+                </button>
+              )}
             </div>
           ))
         )}
