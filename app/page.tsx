@@ -1,5 +1,6 @@
 "use client";
 import BlurText from "../components/BlurText";
+import StarBorder from "../components/StarBorder";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
 
@@ -8,7 +9,6 @@ export default function Home() {
   const handleAnimationComplete = () => {
     console.log("Animation completed!");
   };
-
   return (
     <div className="relative min-h-screen flex items-center justify-center overflow-hidden px-4 sm:px-6 lg:px-8">
       <div className="text-center w-full max-w-4xl mx-auto">
@@ -46,18 +46,22 @@ export default function Home() {
             interviews and real-time performance insights.
           </div>
           <div className="flex flex-col sm:flex-row justify-center items-center gap-3">
-            <button
-              onClick={() => router.push("/auth/signup")}
-              className="bg-[#297356] border border-[#ffffff] text-white px-5 py-2 sm:px-6 sm:py-2.5 rounded-full font-medium hover:bg-[#1f5a44] transition w-full sm:w-auto text-sm sm:text-base"
-            >
-              Sign Up
-            </button>
-            <button
-              onClick={() => router.push("/auth/signin")}
-              className="border border-[#3f9371] text-[#ffffff] px-5 py-2 sm:px-6 sm:py-2.5 rounded-full font-medium hover:bg-[#297356]/10 transition w-full sm:w-auto text-sm sm:text-base"
-            >
-              Sign In
-            </button>
+            <div className="flex flex-col w-full gap-3 items-center">
+              <div className="flex flex-row gap-6 justify-center items-center w-full">
+                <button
+                  onClick={() => router.push("/auth/signup")}
+                  className="bg-[#297356] border border-[#ffffff] text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-full font-medium hover:bg-[#1f5a44] transition min-w-55 text-sm sm:text-base"
+                >
+                  Sign Up
+                </button>
+                <button
+                  onClick={() => router.push("/auth/signin")}
+                  className="bg-[#297356] border border-[#ffffff] text-white px-3 py-2 sm:px-4 sm:py-2.5 rounded-full font-medium hover:bg-[#1f5a44] transition min-w-55 text-sm sm:text-base"
+                >
+                  Sign In
+                </button>
+              </div>
+            </div>
           </div>
         </motion.div>
       </div>
