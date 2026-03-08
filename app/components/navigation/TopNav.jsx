@@ -1,18 +1,44 @@
 "use client"
 
-import React from "react";
+import React, { useEffect, useState } from "react";
+import Link from 'next/link';
+import { supabase } from "../../../lib/supabaseClient";
 
 export default function TopNav() {
+  const [streak, setStreak] = useState(10);
+
+  useEffect(() => {
+    let mounted = true;
+    async function loadStreak() {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData?.user?.id;
+        if (!userId) return;
+        const { data, error } = await supabase.from('user_dashboards').select('streak').eq('user_id', userId).single();
+        if (error) {
+          console.debug('TopNav: failed to load streak', error);
+          return;
+        }
+        if (!mounted) return;
+        setStreak(data?.streak ?? 0);
+      } catch (e) {
+        console.error('TopNav error loading streak', e);
+      }
+    }
+    loadStreak();
+    return () => { mounted = false };
+  }, []);
+
   return (
     <header className="fixed top-0 left-0 right-0 z-50 flex h-20 items-center justify-between px-6 backdrop-blur-md bg-white/5 dark:bg-black/20">
       <div className="flex items-center gap-4">
-        <div className="text-2xl font-semibold text-[#50C878]">InterBrew</div>
+        <Link href="/" className="text-2xl font-semibold text-[#50C878]">InterBrew</Link>
       </div>
 
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-transparent mr-6 hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">
           <img src="/TopPanel/fire.png" alt="activity" className="w-8 h-8 object-contain" />
-          <div className="text-base font-medium">10</div>
+          <div className="text-base font-medium">{streak}</div>
         </div>
 
         <button className="p-2 rounded hover:bg-[#19332C]/50 dark:hover:bg-[#19332C]/40 transition-colors">

@@ -56,3 +56,33 @@ body {
 .group .label {
   transition: opacity 200ms;
 }
+
+/* Page-scoped override: disable recommended-card hover lift when wrapper has .no-card-hover */
+.no-card-hover .recommended-card:hover {
+  transform: none !important;
+}
+
+/* Shared recommended card and scrollbar utilities (moved here so pages using the class don't rely on dashboard.css import) */
+.scrollbar-hide {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Opera */
+}
+
+.recommended-card {
+  background-color: rgba(0,0,0,0.6);
+  -webkit-backdrop-filter: blur(6px) saturate(120%);
+  backdrop-filter: blur(6px) saturate(120%);
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: none;
+  transition: transform 150ms ease;
+}
+.recommended-card:hover {
+  transform: translateY(-4px);
+}
+
+.card-outline {
+  border: 1px solid rgba(255,255,255,0.18);
+}

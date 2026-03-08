@@ -59,9 +59,7 @@ export default function SidePanel() {
         </nav>
 
         <div className="mt-auto w-16 sidebar-expandable transition-all duration-200 px-3 mb-6">
-          <div className="text-xs opacity-0 label transition-opacity">
-            Version 0.1
-          </div>
+          <div className="text-xs opacity-0 label transition-opacity">Made by Aureon</div>
         </div>
       </div>
     </aside>

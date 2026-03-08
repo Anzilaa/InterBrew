@@ -14,7 +14,7 @@ export default function GlobalShell({ children }) {
     return (
       <>
         <Background />
-        {children}
+        <div className="px-4 py-4">{children}</div>
       </>
     );
 

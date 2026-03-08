@@ -1,8 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react"
+import React, { useState, useEffect, useRef, useCallback } from "react"
 import { createPortal } from 'react-dom'
 import "./dashboard.css"
+import { supabase } from "../../../lib/supabaseClient";
 
 function StatCard({
   title,
@@ -128,6 +129,7 @@ function SmallRing({
 export default function Dashboard() {
   const [hoverOpen, setHoverOpen] = useState(false)
   const [favOpen, setFavOpen] = useState(false)
+  const [showAllRings, setShowAllRings] = useState(false)
 
   function Calendar() {
     const today = new Date()
@@ -137,20 +139,30 @@ export default function Dashboard() {
     const [anchorFixed, setAnchorFixed] = useState(false)
     const containerRef = useRef<HTMLDivElement | null>(null)
     const dropdownRef = useRef<HTMLDivElement | null>(null)
+    const addFormRef = useRef<HTMLDivElement | null>(null)
 
-    // sample markers (day numbers within the month)
-    const pending = new Set([2, 10, 17])
-    const confirmed = new Set([8, 15, 22])
+    // interview scheduling state
+    const [interviews, setInterviews] = useState<Array<any>>([])
+    const [subjectInput, setSubjectInput] = useState("")
+    const [difficultyInput, setDifficultyInput] = useState("intermediate")
+    const [roundInput, setRoundInput] = useState("")
+    const [notesInput, setNotesInput] = useState("")
+    const [loadingInterviews, setLoadingInterviews] = useState(false)
+    const [showAddFormModal, setShowAddFormModal] = useState(false)
+
+    // month -> map of day number -> interviews for that day
+    const [monthInterviewsMap, setMonthInterviewsMap] = useState<Record<number, any[]>>({})
 
     useEffect(() => {
       function handlePointer(e: PointerEvent) {
         if (!containerRef.current) return
         // close dropdown when clicking anywhere outside the calendar or dropdown
-        if (selected && anchor) {
+        if (selected != null && anchor) {
           const target = e.target as Node
           const inContainer = containerRef.current.contains(target)
           const inDropdown = dropdownRef.current?.contains(target)
-          if (!inContainer && !inDropdown) {
+          const inAddModal = addFormRef.current?.contains(target)
+          if (!inContainer && !inDropdown && !inAddModal) {
             setSelected(null)
             setAnchor(null)
             setAnchorFixed(false)
@@ -193,33 +205,148 @@ export default function Dashboard() {
 
     function handleDateClick(e: React.MouseEvent<HTMLDivElement>, d: number, type: string) {
       const el = e.currentTarget as HTMLDivElement
-      // only allow selecting current-month days
-      if (type !== 'current') return
-      if (window.innerWidth < 640) {
-        const rect = el.getBoundingClientRect()
-        const left = rect.left
-        const top = rect.bottom
-        if (selected === d) {
-          setSelected(null)
-          setAnchor(null)
-          setAnchorFixed(false)
-        } else {
-          setSelected(d)
-          setAnchor({ left, top })
-          setAnchorFixed(true)
+      // ensure add-modal only opens via the + Add button
+      setShowAddFormModal(false)
+      console.debug('[calendar] date clicked', { d, type })
+      // if clicked a prev/next month cell, switch month then select
+      if (type !== 'current') {
+        if (type === 'prev') {
+          setCurrent(new Date(year, month - 1, 1))
+        } else if (type === 'next') {
+          setCurrent(new Date(year, month + 1, 1))
         }
+        // continue to set selection/anchor so dropdown opens for that date
+      }
+      const rect = el.getBoundingClientRect()
+      const left = rect.left
+      const top = rect.bottom
+      if (selected === d) {
+        setSelected(null)
+        setAnchor(null)
+        setAnchorFixed(false)
       } else {
-        const left = el.offsetLeft
-        const top = el.offsetTop
-        if (selected === d) {
-          setSelected(null)
-          setAnchor(null)
-          setAnchorFixed(false)
-        } else {
-          setSelected(d)
-          setAnchor({ left, top })
-          setAnchorFixed(false)
+        setSelected(d)
+        setAnchor({ left, top })
+        // always use fixed/portaled dropdown positioned in viewport
+        setAnchorFixed(true)
+      }
+    }
+
+    const fetchInterviewsForDay = useCallback(async (day: number) => {
+      try {
+        setLoadingInterviews(true)
+        const { data: userData } = await supabase.auth.getUser()
+        const userId = userData?.user?.id
+        if (!userId) return setInterviews([])
+        // build date for current month/year
+        const iso = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+        const { data, error } = await supabase.from('user_interviews').select('*').eq('user_id', userId).eq('interview_date', iso).order('created_at', { ascending: false })
+        if (error) {
+          console.error('Failed to load interviews', error)
+          setInterviews([])
+          return
         }
+        setInterviews(data ?? [])
+      } finally {
+        setLoadingInterviews(false)
+      }
+    }, [month, year])
+
+    const fetchInterviewsForMonth = useCallback(async () => {
+      try {
+        const { data: userData } = await supabase.auth.getUser()
+        const userId = userData?.user?.id
+        if (!userId) return setMonthInterviewsMap({})
+        const start = `${year}-${String(month + 1).padStart(2,'0')}-01`
+        const end = `${year}-${String(month + 1).padStart(2,'0')}-${String(new Date(year, month + 1, 0).getDate()).padStart(2,'0')}`
+        const { data, error } = await supabase.from('user_interviews').select('*').eq('user_id', userId).gte('interview_date', start).lte('interview_date', end).order('interview_date', { ascending: true })
+        if (error) {
+          console.error('Failed to load monthly interviews', error)
+          setMonthInterviewsMap({})
+          return
+        }
+        const map: Record<number, any[]> = {};
+        ;(data ?? []).forEach((iv: any) => {
+          try {
+            const day = new Date(iv.interview_date).getDate()
+            map[day] = map[day] || []
+            map[day].push(iv)
+          } catch (e) {
+            // ignore parse errors
+          }
+        })
+        console.debug('[calendar] month interviews map', map)
+        setMonthInterviewsMap(map)
+      } catch (e) {
+        console.error(e)
+        setMonthInterviewsMap({})
+      }
+    }, [month, year])
+
+    useEffect(() => {
+      if (selected != null) {
+        void fetchInterviewsForDay(selected)
+      } else {
+        setInterviews([])
+      }
+    }, [selected, fetchInterviewsForDay])
+
+    // load all interviews for the visible month to display markers
+    useEffect(() => {
+      void fetchInterviewsForMonth()
+    }, [fetchInterviewsForMonth])
+
+    async function saveInterviewForDay(day: number) {
+      try {
+        console.debug('[calendar] saving interview', { day, subjectInput, difficultyInput, roundInput })
+        const { data: userData } = await supabase.auth.getUser()
+        const userId = userData?.user?.id
+        if (!userId) throw new Error('Not signed in')
+        const iso = `${year}-${String(month + 1).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+        const payload = {
+          user_id: userId,
+          interview_date: iso,
+          subject: subjectInput,
+          difficulty: difficultyInput,
+          round: roundInput,
+          notes: notesInput
+        }
+        const { data, error } = await supabase.from('user_interviews').insert(payload).select()
+        if (error) {
+          console.error('Failed to save interview', error)
+          return false
+        }
+        // refresh list and month map
+        await fetchInterviewsForDay(day)
+        await fetchInterviewsForMonth()
+        // clear form
+        setSubjectInput("")
+        setDifficultyInput('medium')
+        setRoundInput('technical')
+        setNotesInput("")
+        return true
+      } catch (e) {
+        console.error(e)
+        return false
+      }
+    }
+
+    async function updateInterviewStatus(id: string | number, status: string) {
+      try {
+        console.debug('[calendar] updateInterviewStatus', { id, status })
+        const { data, error } = await supabase.from('user_interviews').update({ status }).eq('id', id).select()
+        if (error) {
+          console.error('Failed to update interview status', error)
+          return false
+        }
+        console.debug('[calendar] update result', { data })
+        // refresh day and month
+        if (selected != null) await fetchInterviewsForDay(selected)
+        await fetchInterviewsForMonth()
+        return true
+      } catch (e) {
+        console.error('updateInterviewStatus exception', e)
+        return false
       }
     }
 
@@ -250,12 +377,22 @@ export default function Dashboard() {
                 className={`relative w-5 sm:w-8 h-5 sm:h-8 flex items-center justify-center rounded-full ${cell.type === 'current' ? 'bg-white/5 cursor-pointer' : 'opacity-40'} ${selected === cell.day && cell.type === 'current' ? 'ring-2 ring-emerald-400' : ''}`}
               >
                 <div className="text-[10px] sm:text-sm">{cell.day}</div>
-                {cell.type === 'current' && pending.has(cell.day) && (
-                  <div className="absolute -right-2 -top-2 bg-red-600 rounded-full w-2.5 sm:w-5 h-2.5 sm:h-5 flex items-center justify-center text-[7px] sm:text-[10px]">✕</div>
-                )}
-                {cell.type === 'current' && confirmed.has(cell.day) && (
-                  <div className="absolute -right-2 -top-2 bg-emerald-500 rounded-full w-2.5 sm:w-5 h-2.5 sm:h-5 flex items-center justify-center text-[7px] sm:text-[10px]">✓</div>
-                )}
+                {cell.type === 'current' && (() => {
+                  const dayMap = monthInterviewsMap[cell.day] || []
+                  const hasScheduled = dayMap.length > 0
+                  const hasCompleted = dayMap.some((iv: any) => iv.status === 'completed')
+                  const hasMissed = dayMap.some((iv: any) => iv.status === 'missed')
+                  if (hasCompleted) {
+                    return <div className="absolute -right-2 -top-2 bg-emerald-500 rounded-full w-3 sm:w-5 h-3 sm:h-5 flex items-center justify-center text-[7px] sm:text-[10px]">✓</div>
+                  }
+                  if (hasMissed) {
+                    return <div className="absolute -right-2 -top-2 bg-red-600 rounded-full w-3 sm:w-5 h-3 sm:h-5 flex items-center justify-center text-[7px] sm:text-[10px]">✕</div>
+                  }
+                  if (hasScheduled) {
+                    return <div className="absolute -right-0.5 -top-0.5 bg-emerald-400 rounded-full w-2 h-2 sm:w-2.5 sm:h-2.5" />
+                  }
+                  return null
+                })()}
               </div>
               
             </div>
@@ -263,25 +400,103 @@ export default function Dashboard() {
         </div>
 
         {selected && anchor && (() => {
-          const dd = (
-            <div
-              ref={dropdownRef}
-              className={`${anchorFixed ? 'fixed' : 'absolute'} z-50 w-36 sm:w-44 bg-black/80 border border-white/20 rounded-md p-2 sm:p-3 shadow-lg text-sm`}
-            >
-              <div className="text-xs opacity-80">{selected} {current.toLocaleString(undefined, { month: 'short' })}</div>
-              <div className="mt-1 font-semibold">Frontend</div>
-              <div className="text-xs sm:text-sm opacity-80 mt-1">76% complete</div>
-              <div className="mt-1 text-xs sm:text-sm leading-snug">Work on the layout</div>
-            </div>
-          )
+            const dd = (
+              <div
+                ref={dropdownRef}
+                className={`${anchorFixed ? 'fixed' : 'absolute'} z-50 w-72 sm:w-96 bg-black/80 border border-white/20 rounded-md p-2 sm:p-3 shadow-lg text-sm`}
+              >
+                <div className="text-xs opacity-80">{selected} {current.toLocaleString(undefined, { month: 'short' })}</div>
+
+                <div className="mt-2 mb-2">
+                  <div className="font-semibold mb-1">Scheduled interviews</div>
+                  {loadingInterviews ? (
+                    <div className="text-xs opacity-70">Loading…</div>
+                  ) : interviews.length ? (
+                    <ul className="space-y-2 max-h-40 overflow-y-auto">
+                      {interviews.map((iv: any) => (
+                        <li key={iv.id} className="p-2 rounded bg-black/40 border border-white/10">
+                          <div className="flex items-start justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-medium">{iv.subject || 'Untitled'}</div>
+                              <div className="text-xs opacity-80">{iv.round} · {iv.difficulty}</div>
+                              {iv.notes && <div className="mt-1 text-xs opacity-70">{iv.notes}</div>}
+                            </div>
+                            <div className="flex flex-col items-end gap-1">
+                              {iv.status === 'completed' && <div className="text-xs text-emerald-400">Completed</div>}
+                              {iv.status === 'missed' && <div className="text-xs text-red-400">Missed</div>}
+                              <div className="flex gap-1">
+                                {iv.status !== 'completed' && (
+                                  <button onClick={async () => await updateInterviewStatus(iv.id, 'completed')} className="text-xs px-2 py-0.5 rounded bg-emerald-600">Mark complete</button>
+                                )}
+                                {iv.status !== 'missed' && (
+                                  <button onClick={async () => await updateInterviewStatus(iv.id, 'missed')} className="text-xs px-2 py-0.5 rounded bg-red-600">Mark missed</button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="text-xs opacity-70">No interviews scheduled</div>
+                  )}
+                </div>
+
+                <div className="mt-2 pt-2 border-t border-white/10 flex items-center justify-between">
+                  <div className="font-semibold">Scheduled</div>
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={(ev) => { ev.stopPropagation(); console.debug('[calendar] +Add clicked', { selected }); setShowAddFormModal(true); }} className="px-2 py-1 rounded bg-emerald-600 text-sm">+ Add</button>
+                    <button onClick={() => { setSelected(null); setAnchor(null); setAnchorFixed(false); }} className="px-2 py-1 rounded bg-white/10 text-sm">Close</button>
+                  </div>
+                </div>
+
+                {showAddFormModal && selected && (() => {
+                  const modal = (
+                    <div className="fixed inset-0 z-60 flex items-center justify-center">
+                      <div className="absolute inset-0 bg-black/60" onClick={() => setShowAddFormModal(false)} />
+                      <div ref={addFormRef} className="relative w-full max-w-md p-4 bg-black/80 border border-white/20 rounded-md text-white">
+                        <div className="flex items-center justify-between mb-3">
+                          <button onClick={() => setShowAddFormModal(false)} className="px-2 py-1 rounded bg-white/10">Back</button>
+                          <div className="font-semibold">Add interview — {selected} {current.toLocaleString(undefined, { month: 'short' })}</div>
+                          <div />
+                        </div>
+                        <div>
+                          <input value={subjectInput} onChange={(e) => setSubjectInput(e.target.value)} placeholder="Subject" className="w-full mb-2 rounded px-2 py-1 bg-black/30 border border-white/10" />
+                          <div className="flex gap-2 mb-2">
+                            <select value={difficultyInput} onChange={(e) => setDifficultyInput(e.target.value)} className="flex-1 rounded px-2 py-1 bg-black/30 border border-white/10">
+                              <option value="beginner">Beginner</option>
+                              <option value="intermediate">Intermediate</option>
+                              <option value="advanced">Advanced</option>
+                            </select>
+                            <input value={roundInput} onChange={(e) => setRoundInput(e.target.value)} placeholder="Round (e.g. technical)" className="flex-1 rounded px-2 py-1 bg-black/30 border border-white/10" />
+                          </div>
+                          <textarea value={notesInput} onChange={(e) => setNotesInput(e.target.value)} placeholder="Notes (optional)" className="w-full mb-2 rounded px-2 py-1 bg-black/30 border border-white/10" />
+                          <div className="flex justify-end gap-2">
+                            <button onClick={() => setShowAddFormModal(false)} className="px-3 py-1 rounded bg-white/10">Cancel</button>
+                            <button onClick={async () => { if (selected) { await saveInterviewForDay(selected); setShowAddFormModal(false); } }} className="px-3 py-1 rounded bg-emerald-600">Save</button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                  try { return createPortal(modal, document.body) } catch (e) { return modal }
+                })()}
+              </div>
+            )
 
           if (anchorFixed) {
             try {
               const ddW = 144
               const leftRaw = anchor.left
+              // For small screens use full-width with side padding and clamp top
+              const topRaw = anchor.top + 6
+              if (window.innerWidth < 640) {
+                const top = Math.min(Math.max(topRaw, 8), Math.max(8, window.innerHeight - 120))
+                return createPortal(React.cloneElement(dd, { style: { left: 8, right: 8, top } }), document.body)
+              }
               const maxLeft = Math.max(8, window.innerWidth - ddW - 8)
               const left = Math.min(Math.max(leftRaw, 8), maxLeft)
-              const top = anchor.top + 6
+              const top = topRaw
               return createPortal(React.cloneElement(dd, { style: { left, top } }), document.body)
             } catch (e) {
               return dd
@@ -325,16 +540,102 @@ export default function Dashboard() {
   ]
 
   // sample per-collection progress (same length as collections)
-  const progress = [72, 30, 55, 20, 90, 45, 60, 12, 78, 34, 56, 18];
+  const [progress, setProgress] = useState<number[]>([72, 30, 55, 20, 90, 45, 60, 12, 78, 34, 56, 18]);
 
-  const favQuestions = [
+  const [favQuestions, setFavQuestions] = useState<string[]>([
     "What is closure in JavaScript?",
     "Explain normalization in databases.",
     "How does HTTP/2 improve performance?",
     "Design an LRU cache.",
     "Explain the CAP theorem.",
     "What is the difference between TCP and UDP?",
-  ]
+  ]);
+
+  const [thisWeek, setThisWeek] = useState<{ xp?: number; badges?: number; leaderboard_rank?: number; modules_completed?: number }>({ xp: 1250 });
+  // load per-user dashboard data from Supabase and update local state (no layout change)
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        const userId = userData?.user?.id;
+        console.debug('[dashboard] signed-in user id:', userId);
+        if (!userId) {
+          console.debug('[dashboard] no signed-in user; dashboard row will not be loaded');
+          return;
+        }
+
+        const { data, error } = await supabase.from('user_dashboards').select('*').eq('user_id', userId).single();
+        if (error) {
+          console.error('Failed to load dashboard row', error);
+          return;
+        }
+        console.debug('[dashboard] loaded dashboard row:', data);
+        if (!mounted) return;
+
+        // update favourite questions
+        if (Array.isArray(data.favourite_questions)) setFavQuestions(data.favourite_questions);
+
+        // update this week metrics
+        if (data.this_week) {
+          const tw = data.this_week;
+          setThisWeek({ xp: tw.xp ?? tw?.xp, badges: tw.badges ?? tw?.badges, leaderboard_rank: tw.leaderboard_rank ?? tw?.leaderboard_rank, modules_completed: tw.modules_completed ?? tw?.modules_completed });
+        }
+
+        // Prefer explicit readiness_score object for per-skill values (seeded values)
+        if (data.readiness_score && typeof data.readiness_score === 'object') {
+          try {
+            const rs = data.readiness_score;
+            const vals = skills.map((s) => {
+              if (typeof rs[s.abbr] === 'number') return rs[s.abbr];
+              if (typeof rs[s.name] === 'number') return rs[s.name];
+              const lc = s.name.toLowerCase();
+              if (typeof rs[lc] === 'number') return rs[lc];
+              return 0;
+            });
+            setProgress(vals);
+          } catch (e) {
+            console.error('Failed to parse readiness_score', e);
+          }
+        } else if (data.graph_data) {
+          // update small progress rings from graph_data if available (fallback)
+          const gd = data.graph_data;
+
+          if (gd.subject && typeof gd.subject === 'object') {
+            // map by collection title names (prefer exact, then lowercase, then abbreviated)
+            const vals = collections.map((c) => {
+              const choices = [c.title, c.title.toLowerCase(), c.title.replace(/\W+/g, '').toUpperCase()];
+              for (const k of choices) {
+                if (gd.subject[k]) {
+                  const arr = gd.subject[k];
+                  return Array.isArray(arr) ? (arr[arr.length - 1] ?? 0) : (typeof arr === 'number' ? arr : 0);
+                }
+              }
+              return 0;
+            });
+            setProgress(vals);
+          } else if (Array.isArray(gd.monthly)) {
+            const latest = gd.monthly[gd.monthly.length - 1] ?? 0;
+            setProgress(collections.map(() => latest));
+          } else if (Array.isArray(gd.weekly)) {
+            const latest = gd.weekly[gd.weekly.length - 1] ?? 0;
+            setProgress(collections.map(() => latest));
+          }
+        }
+      } catch (e) {
+        console.error('Error loading dashboard data', e);
+      }
+    }
+    load();
+    function onFavUpdated(e: any) {
+      console.debug('[dashboard] favourites updated event', e?.detail)
+      // re-run load to refresh favourites
+      void load()
+    }
+    window.addEventListener('favourites:updated', onFavUpdated)
+    return () => { window.removeEventListener('favourites:updated', onFavUpdated); mounted = false }
+  }, []);
+
   function abbreviate(title: string) {
     const map: Record<string, string> = {
       Frontend: "FE",
@@ -362,27 +663,29 @@ export default function Dashboard() {
   }
 
   return (
-    <div className="pt-0 px-0 sm:px-0 lg:px-2 pb-6 v-scrollbar-hide">
+    <div className="pt-0 px-0 sm:px-0 lg:px-0 pb-6 v-scrollbar-hide">
 
       {/* Recommended Collections: horizontally scrollable cards */}
-      <section className="mb-2">
-        <h2 className="mb-3 text-lg font-semibold">Recommended collections</h2>
+      <section className="mb-1">
+        <h2 className="mt-2 mb-2 text-2xl font-semibold">Recommended collections</h2>
         <div>
-            <div className="flex gap-4 overflow-x-auto pl-0 pr-2 py-2 scrollbar-hide">
-            {collections.map((c) => (
-              <div key={c.title} className="min-w-56 sm:min-w-[20rem] md:min-w-104 lg:min-w-120 shrink-0 rounded-lg p-6 sm:p-8 md:p-10 text-white bg-transparent recommended-card">
-                <div className="text-sm opacity-90">Collection</div>
-                <div className="mt-3 text-2xl sm:text-3xl md:text-4xl font-bold">{c.title}</div>
-                <div className="mt-4 text-sm opacity-90">5 courses · 24 items</div>
+            <div className="rounded-2xl overflow-hidden">
+              <div className="flex gap-2 overflow-x-auto pl-0 pr-1 py-1 scrollbar-hide">
+                {collections.map((c) => (
+                  <div key={c.title} className="min-w-[20rem] sm:min-w-[24rem] md:min-w-md lg:min-w-lg shrink-0 rounded-xl p-8 sm:p-10 md:p-12 text-white bg-transparent recommended-card" style={{minHeight: 220}}>
+                    <div className="text-sm opacity-90">Collection</div>
+                    <div className="mt-3 text-2xl sm:text-3xl md:text-4xl font-bold">{c.title}</div>
+                    <div className="mt-4 text-sm opacity-90">5 courses · 24 items</div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
             {favOpen && (() => {
               const modal = (
                 <div className="fixed inset-0 z-50 flex items-center justify-center">
                   <div className="absolute inset-0 bg-transparent backdrop-blur-sm" onClick={() => setFavOpen(false)} />
-                  <div className="relative w-full max-w-2xl p-4">
-                    <div className="rounded-lg p-6 bg-transparent text-white recommended-card" onClick={(e) => e.stopPropagation()}>
+                  <div className="relative w-full max-w-2xl p-2">
+                    <div className="rounded-lg p-4 bg-transparent text-white recommended-card" onClick={(e) => e.stopPropagation()}>
                       <div className="flex items-center justify-between">
                         <div className="text-lg font-semibold">Favourite questions</div>
                         <button onClick={() => setFavOpen(false)} className="ml-2 px-3 py-1 rounded-md bg-white/10">Close</button>
@@ -408,19 +711,32 @@ export default function Dashboard() {
       </section>
 
       {/* New 2-column layout below recommended collections (left column smaller) */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-        <div className="lg:col-span-2 rounded-lg p-6 bg-black/80 dark:bg-black/60 flex flex-col items-center">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-2">
+        <div className="lg:col-span-2 rounded-lg p-4 bg-black/80 dark:bg-black/60 flex flex-col items-center">
           <h3 className="mb-4 text-lg font-semibold">Readiness Score</h3>
 
           {/* small circular progress badges, scrollable */}
           <div className="w-full">
             <div className="-mx-2">
               <div className="flex gap-4 overflow-x-auto px-2 py-2 scrollbar-hide items-end">
-                {collections.map((c, i) => (
+                {(showAllRings ? collections : collections.slice(0, 5)).map((c, i) => (
                   <div key={c.title} className="shrink-0 flex flex-col items-center" title={`${skills[i]?.name ?? c.title} (${skills[i]?.abbr ?? abbreviate(c.title)})`}>
                     <SmallRing percent={progress[i] ?? 0} label={skills[i]?.abbr ?? abbreviate(c.title)} />
                   </div>
                 ))}
+
+                {collections.length > 5 && (
+                  <div className="shrink-0 flex flex-col items-center">
+                    <button
+                      onClick={() => setShowAllRings(!showAllRings)}
+                      aria-label={showAllRings ? 'Show less' : 'Show more'}
+                      className="w-16 h-16 rounded-full border border-white/20 flex items-center justify-center text-white bg-black/40"
+                    >
+                      {showAllRings ? '−' : '+'}
+                    </button>
+                    <div className="mt-2 text-sm font-medium opacity-80">{showAllRings ? 'Less' : 'More'}</div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -429,10 +745,10 @@ export default function Dashboard() {
             <div>
               <h4 className="text-sm font-semibold mb-2">This week's</h4>
               <div className="text-sm leading-relaxed text-gray-700 dark:text-gray-300">
-                <div>Total: XP points - 1250</div>
-                <div>Badges Earned:</div>
+                <div>Total: XP points - {thisWeek.xp ?? '—'}</div>
+                <div>Badges Earned: {thisWeek.badges ?? '—'}</div>
                 <div>Current levels:</div>
-                <div>Leaderboard Rank:</div>
+                <div>Leaderboard Rank: {thisWeek.leaderboard_rank ?? '—'}</div>
               </div>
             </div>
 
@@ -446,24 +762,24 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="lg:col-span-3 relative rounded-lg p-4 sm:p-6 bg-black/80 dark:bg-black/60">
+        <div className="lg:col-span-3 relative rounded-lg p-2 sm:p-4 bg-black/80 dark:bg-black/60">
           {/* right column: contest card, expanding interviews panel, and graph */}
           <div className="flex flex-col gap-6">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
               {/* Two cards placed side-by-side on larger screens */}
-              <div className="rounded-lg p-6 bg-transparent text-white w-full text-center recommended-card">
+              <div className="rounded-lg p-3 bg-transparent text-white w-full text-center recommended-card">
                 <div className="text-sm opacity-90">Slaying September Contest</div>
                 <div className="mt-4">
                   <button className="px-4 py-2 rounded-md bg-[#19332C]/50 hover:bg-[#19332C]/80 text-white">Continue</button>
                 </div>
               </div>
               <div
-                className="rounded-lg p-6 bg-transparent text-white w-full recommended-card cursor-pointer"
+                className="rounded-lg p-3 bg-transparent text-white w-full recommended-card cursor-pointer"
                 onClick={() => setFavOpen(true)}
               >
                 <div className="text-sm opacity-90">Favourite questions</div>
                 <div className="mt-3 text-left">
-                  <div className="max-h-32 overflow-y-auto pr-2">
+                  <div className="pr-2">
                     <ul className="space-y-2 text-sm">
                       {favQuestions.slice(0, 4).map((q, idx) => (
                         <li key={idx} className="opacity-90">• {q}</li>
@@ -476,7 +792,7 @@ export default function Dashboard() {
               {/* Calendar removed from right column per design change */}
             </div>
 
-            <div className="rounded-lg card-outline p-4 h-96 bg-transparent relative overflow-hidden">
+            <div className="rounded-lg card-outline p-3 h-96 bg-transparent relative overflow-hidden">
               <div className="mx-auto w-full sm:max-w-3xl h-full">
                 {/* cards removed from graph area */}
                 <div className="flex flex-col gap-3 mb-4">
