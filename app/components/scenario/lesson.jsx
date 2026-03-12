@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import "./lesson.css";
 
@@ -28,10 +28,24 @@ export default function LessonView({ module, onBack, onComplete }) {
 
   // Interview state
   const [interviewMessages, setInterviewMessages] = useState([]);
-  const [interviewInput, setInterviewInput] = useState("");
   const [interviewStarted, setInterviewStarted] = useState(false);
   const [interviewEnded, setInterviewEnded] = useState(false);
-  const [interviewQuestionIndex, setInterviewQuestionIndex] = useState(0);
+  const [isListening, setIsListening] = useState(false);
+  const [isAiSpeaking, setIsAiSpeaking] = useState(false);
+  const [isAiThinking, setIsAiThinking] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const recognitionRef = useRef(null);
+  const interruptRecognitionRef = useRef(null);
+  // Always-current mirror of interviewMessages — avoids stale closure in generateFeedback
+  const interviewMessagesRef = useRef([]);
+  const groqHistoryRef = useRef([]);
+  const voiceTranscriptRef = useRef("");
+  const isSendingRef = useRef(false);
+  const isAiSpeakingRef = useRef(false);
+  const interruptCountRef = useRef(0);
+  const pauseCountRef = useRef(0);
+  const sendDelayRef = useRef(null);
+  const interviewEndedRef = useRef(false);
 
   // Feedback state
   const [feedback, setFeedback] = useState(null);
@@ -119,19 +133,9 @@ export default function LessonView({ module, onBack, onComplete }) {
   const activeQuiz = hasQuiz ? quizQuestions[currentQuiz] : null;
   const isLastQuizQuestion = currentQuiz === quizQuestions.length - 1;
 
-  // Generate mock interview questions based on module context
-  const interviewQuestions = [
-    `Tell me about your understanding of ${module?.title || "this topic"}.`,
-    `Can you walk me through a real-world scenario where you'd apply what you learned in ${module?.title || "this module"}?`,
-    `What challenges do you think someone might face when dealing with ${module?.title || "this topic"} in a professional setting?`,
-    `How would you explain ${module?.title || "this concept"} to someone who has never heard of it?`,
-    `What was the most important takeaway from this module for you?`,
-  ];
-
   const handleNext = () => {
     const stepType = getStepType();
 
-    // If on quiz step and more quiz questions remain, advance quiz question
     if (stepType === "quiz" && !isLastQuizQuestion) {
       setCurrentQuiz(currentQuiz + 1);
       setSelectedAnswer(null);
@@ -139,14 +143,12 @@ export default function LessonView({ module, onBack, onComplete }) {
       return;
     }
 
-    // If on interview step, advance to feedback
     if (stepType === "interview") {
       generateFeedback();
       setStep(step + 1);
       return;
     }
 
-    // If on feedback step, this means "Complete Module"
     if (stepType === "feedback") {
       if (isLastLesson) {
         onComplete?.();
@@ -183,13 +185,11 @@ export default function LessonView({ module, onBack, onComplete }) {
   const handlePrev = () => {
     const stepType = getStepType();
 
-    // If on feedback step, go back to interview
     if (stepType === "feedback") {
       setStep(step - 1);
       return;
     }
 
-    // If on interview step, go back to quiz (last question) or previous step
     if (stepType === "interview") {
       setStep(step - 1);
       if (hasQuiz) setCurrentQuiz(quizQuestions.length - 1);
@@ -199,7 +199,6 @@ export default function LessonView({ module, onBack, onComplete }) {
       return;
     }
 
-    // If on quiz step and not on first question, go back one quiz question
     if (stepType === "quiz" && currentQuiz > 0) {
       setCurrentQuiz(currentQuiz - 1);
       const prev = quizAnswers[currentQuiz - 1];
@@ -216,12 +215,11 @@ export default function LessonView({ module, onBack, onComplete }) {
       setCurrentLesson(currentLesson - 1);
       const prevLesson = lessons[currentLesson - 1];
       const prevHasVideo = !!prevLesson?.video_url;
-      // Go to interview step of the previous lesson (last step)
       let prevTotalSteps = 1;
       if (prevHasVideo) prevTotalSteps++;
       if (hasQuiz) prevTotalSteps++;
-      prevTotalSteps++; // interview
-      prevTotalSteps++; // feedback
+      prevTotalSteps++;
+      prevTotalSteps++;
       setStep(prevTotalSteps - 1);
       setSelectedAnswer(null);
       setAnswered(false);
@@ -232,7 +230,6 @@ export default function LessonView({ module, onBack, onComplete }) {
     if (answered) return;
     setSelectedAnswer(option);
     setAnswered(true);
-    // Track this answer
     setQuizAnswers((prev) => ({
       ...prev,
       [currentQuiz]: {
@@ -242,7 +239,6 @@ export default function LessonView({ module, onBack, onComplete }) {
     }));
   };
 
-  // Map step index to actual content type
   const getStepType = () => {
     const types = ["explanation"];
     if (lesson?.video_url) types.push("video");
@@ -252,16 +248,219 @@ export default function LessonView({ module, onBack, onComplete }) {
     return types[step] || "explanation";
   };
 
+  // ── Voice helpers ──────────────────────────────────────────
+  // One recognizer runs the whole interview — handles both interrupts and normal listening
+  const speakText = (text) => {
+    if (typeof window === "undefined" || !window.speechSynthesis) return;
+    if (interviewEndedRef.current) return; // don't speak if interview already ended
+    window.speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate = 1.0;
+    utter.pitch = 1.0;
+    isAiSpeakingRef.current = true;
+    setIsAiSpeaking(true);
+    utter.onstart = () => {
+      // Delay mic by 1 s so TTS echo doesn't trigger the interrupt path
+      setTimeout(() => {
+        if (isAiSpeakingRef.current && !interviewEndedRef.current)
+          startListening();
+      }, 1000);
+    };
+    utter.onend = () => {
+      isAiSpeakingRef.current = false;
+      setIsAiSpeaking(false);
+      if (
+        !recognitionRef.current &&
+        !interviewEndedRef.current &&
+        !isSendingRef.current
+      )
+        startListening();
+    };
+    utter.onerror = () => {
+      isAiSpeakingRef.current = false;
+      setIsAiSpeaking(false);
+      if (
+        !recognitionRef.current &&
+        !interviewEndedRef.current &&
+        !isSendingRef.current
+      )
+        startListening();
+    };
+    window.speechSynthesis.speak(utter);
+  };
+
+  const startListening = () => {
+    if (interviewEndedRef.current || recognitionRef.current) return;
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+
+    const recognition = new SR();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (e) => {
+      // Rebuild full transcript from ALL results so far (avoids interim duplicates)
+      let full = "";
+      for (let i = 0; i < e.results.length; i++)
+        full += e.results[i][0].transcript + " ";
+      full = full.trim();
+      if (!full) return;
+
+      // Interrupt: user spoke real words while AI was talking
+      if (isAiSpeakingRef.current) {
+        interruptCountRef.current += 1;
+        isAiSpeakingRef.current = false;
+        setIsAiSpeaking(false);
+        window.speechSynthesis.cancel();
+      }
+
+      voiceTranscriptRef.current = full;
+      setVoiceTranscript(full);
+
+      // Reset silence timer — only arm when AI is not speaking
+      if (sendDelayRef.current) clearTimeout(sendDelayRef.current);
+      if (!isSendingRef.current && !isAiSpeakingRef.current) {
+        sendDelayRef.current = setTimeout(() => {
+          sendDelayRef.current = null;
+          stopAndSend();
+        }, 500);
+      }
+    };
+
+    recognition.onend = () => {
+      // Guard: only clear ref if this is still the active recognizer
+      // (prevents stale onend from nulling a freshly started recognizer)
+      if (recognitionRef.current === recognition) {
+        recognitionRef.current = null;
+        setIsListening(false);
+      }
+      // Auto-restart unless interview is over or a send is in flight
+      if (!interviewEndedRef.current && !isSendingRef.current) startListening();
+    };
+
+    recognition.onerror = () => {
+      // onend fires after onerror and handles restart
+    };
+
+    try {
+      recognitionRef.current = recognition;
+      recognition.start();
+      setIsListening(true);
+    } catch (_) {
+      recognitionRef.current = null;
+    }
+  };
+
+  const stopAndSend = async () => {
+    if (isSendingRef.current) return;
+    isSendingRef.current = true;
+    if (sendDelayRef.current) {
+      clearTimeout(sendDelayRef.current);
+      sendDelayRef.current = null;
+    }
+    // Clear ref FIRST so the stale onend callback won't null the next recognizer
+    const activeRec = recognitionRef.current;
+    recognitionRef.current = null;
+    if (activeRec)
+      try {
+        activeRec.stop();
+      } catch (_) {}
+    setIsListening(false);
+    const answer = voiceTranscriptRef.current.trim();
+    voiceTranscriptRef.current = "";
+    setVoiceTranscript("");
+    if (!answer) {
+      isSendingRef.current = false;
+      if (!interviewEndedRef.current) startListening();
+      return;
+    }
+    setInterviewMessages((prev) => {
+      const next = [...prev, { role: "user", text: answer }];
+      interviewMessagesRef.current = next;
+      return next;
+    });
+    setIsAiThinking(true);
+    const newHistory = [
+      ...groqHistoryRef.current,
+      { role: "user", content: answer },
+    ];
+    try {
+      const res = await fetch("/api/mock_int", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: answer,
+          history: groqHistoryRef.current,
+          moduleTitle: module?.title || "this topic",
+        }),
+      });
+      const data = await res.json();
+      const aiText = data.reply || "Thank you for your answer.";
+      groqHistoryRef.current = [
+        ...newHistory,
+        { role: "assistant", content: aiText },
+      ];
+      setInterviewMessages((prev) => {
+        const next = [...prev, { role: "ai", text: aiText }];
+        interviewMessagesRef.current = next;
+        return next;
+      });
+      if (data.isComplete) {
+        interviewEndedRef.current = true;
+        setInterviewEnded(true);
+      } else if (!interviewEndedRef.current) {
+        speakText(aiText);
+      }
+    } catch {
+      // On network error, speak a recovery prompt so the mic restarts
+      if (!interviewEndedRef.current) {
+        const fallback = "I missed that — please repeat your answer.";
+        setInterviewMessages((prev) => {
+          const next = [...prev, { role: "ai", text: fallback }];
+          interviewMessagesRef.current = next;
+          return next;
+        });
+        speakText(fallback);
+      }
+    } finally {
+      setIsAiThinking(false);
+      isSendingRef.current = false;
+    }
+  };
+
   const resetInterview = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (_) {}
+      recognitionRef.current = null;
+    }
+    interruptRecognitionRef.current = null;
+    if (typeof window !== "undefined" && window.speechSynthesis)
+      window.speechSynthesis.cancel();
+    interviewMessagesRef.current = [];
     setInterviewMessages([]);
-    setInterviewInput("");
     setInterviewStarted(false);
     setInterviewEnded(false);
-    setInterviewQuestionIndex(0);
+    setIsListening(false);
+    setIsAiSpeaking(false);
+    setIsAiThinking(false);
+    setVoiceTranscript("");
+    voiceTranscriptRef.current = "";
+    isSendingRef.current = false;
+    isAiSpeakingRef.current = false;
+    interviewEndedRef.current = false;
+    interruptCountRef.current = 0;
+    pauseCountRef.current = 0;
+    if (sendDelayRef.current) {
+      clearTimeout(sendDelayRef.current);
+      sendDelayRef.current = null;
+    }
+    groqHistoryRef.current = [];
   };
 
   const generateFeedback = () => {
-    // Quiz score
     const totalQuiz = Object.keys(quizAnswers).length;
     const correctCount = Object.values(quizAnswers).filter(
       (a) => a.correct,
@@ -269,8 +468,8 @@ export default function LessonView({ module, onBack, onComplete }) {
     const quizPercent =
       totalQuiz > 0 ? Math.round((correctCount / totalQuiz) * 100) : 0;
 
-    // Collect user's interview answers
-    const userResponses = interviewMessages
+    // Read from ref so we always get the latest messages, not a stale closure value
+    const userResponses = interviewMessagesRef.current
       .filter((m) => m.role === "user")
       .map((m) => m.text);
     const avgResponseLength =
@@ -281,9 +480,69 @@ export default function LessonView({ module, onBack, onComplete }) {
           )
         : 0;
 
-    // Determine strengths and areas to improve
+    // Hesitation: count filler words across all user responses
+    const fillerPattern =
+      /\b(um+|uh+|er+|hmm+|erm+|ah+|like|you know|basically|literally|so so|i mean)\b/gi;
+    const allText = userResponses.join(" ");
+    const fillerMatches = allText.match(fillerPattern);
+    const hesitationCount = fillerMatches ? fillerMatches.length : 0;
+    const interrupts = interruptCountRef.current;
+    const pauses = pauseCountRef.current;
+
+    // Soft skill scores (1–5)
+    const clarityScore =
+      avgResponseLength >= 25
+        ? 5
+        : avgResponseLength >= 18
+          ? 4
+          : avgResponseLength >= 12
+            ? 3
+            : avgResponseLength >= 6
+              ? 2
+              : 1;
+
+    const listeningScore =
+      interrupts === 0
+        ? 5
+        : interrupts === 1
+          ? 4
+          : interrupts === 2
+            ? 3
+            : interrupts === 3
+              ? 2
+              : 1;
+
+    const confidenceScore =
+      hesitationCount === 0 && pauses <= 1 && avgResponseLength >= 15
+        ? 5
+        : hesitationCount <= 2 && pauses <= 3 && avgResponseLength >= 10
+          ? 4
+          : hesitationCount <= 4 && pauses <= 5
+            ? 3
+            : hesitationCount <= 7
+              ? 2
+              : 1;
+
     const strengths = [];
     const improvements = [];
+
+    if (interrupts === 0)
+      strengths.push("Stayed focused and let the interviewer finish speaking");
+    else
+      improvements.push(
+        `Interrupted the interviewer ${interrupts} time${interrupts > 1 ? "s" : ""} — practice active listening`,
+      );
+
+    if (hesitationCount === 0)
+      strengths.push("Spoke fluently with no noticeable filler words");
+    else if (hesitationCount <= 3)
+      improvements.push(
+        `${hesitationCount} filler word${hesitationCount > 1 ? "s" : ""} detected — try to pause instead of using fillers`,
+      );
+    else
+      improvements.push(
+        `${hesitationCount} filler words detected — slow down and breathe before answering`,
+      );
 
     if (quizPercent >= 80)
       strengths.push("Strong grasp of theoretical concepts");
@@ -303,26 +562,25 @@ export default function LessonView({ module, onBack, onComplete }) {
     else
       improvements.push("Provide more detailed responses during the interview");
 
-    if (userResponses.length === interviewQuestions.length)
+    if (userResponses.length >= 4)
       strengths.push("Completed all interview questions");
     if (correctCount === totalQuiz && totalQuiz > 0)
       strengths.push("Perfect quiz score!");
-
     if (strengths.length === 0)
       strengths.push("Completed the full module flow");
     if (improvements.length === 0)
       improvements.push("Continue practicing to maintain your skills");
 
-    // Overall rating
-    let overallRating;
-    let ratingColor;
-    if (quizPercent >= 80 && avgResponseLength >= 15) {
+    let overallRating, ratingColor;
+    const interruptPenalty = interrupts * 10;
+    const adjustedQuiz = Math.max(0, quizPercent - interruptPenalty);
+    if (adjustedQuiz >= 80 && avgResponseLength >= 15) {
       overallRating = "Excellent";
       ratingColor = "emerald";
-    } else if (quizPercent >= 60 && avgResponseLength >= 10) {
+    } else if (adjustedQuiz >= 60 && avgResponseLength >= 10) {
       overallRating = "Good";
       ratingColor = "blue";
-    } else if (quizPercent >= 40) {
+    } else if (adjustedQuiz >= 40) {
       overallRating = "Satisfactory";
       ratingColor = "amber";
     } else {
@@ -340,6 +598,16 @@ export default function LessonView({ module, onBack, onComplete }) {
         questionsAnswered: userResponses.length,
         avgWords: avgResponseLength,
       },
+      behavioralStats: {
+        interruptions: interrupts,
+        hesitations: hesitationCount,
+        pauses,
+      },
+      softSkills: [
+        { label: "Communicated ideas clearly", score: clarityScore },
+        { label: "Listened actively to others", score: listeningScore },
+        { label: "Expressed thoughts confidently", score: confidenceScore },
+      ],
       strengths,
       improvements,
       overallRating,
@@ -347,40 +615,39 @@ export default function LessonView({ module, onBack, onComplete }) {
     });
   };
 
-  const startInterview = () => {
+  const startInterview = async () => {
     setInterviewStarted(true);
-    setInterviewMessages([
-      {
-        role: "ai",
-        text: `Welcome! I'll be conducting a brief interview about "${module?.title || "this module"}". Let's begin.\n\n${interviewQuestions[0]}`,
-      },
-    ]);
-    setInterviewQuestionIndex(0);
-  };
-
-  const sendInterviewMessage = () => {
-    if (!interviewInput.trim() || interviewEnded) return;
-
-    const userMsg = { role: "user", text: interviewInput.trim() };
-    const nextIdx = interviewQuestionIndex + 1;
-
-    let aiResponse;
-    if (nextIdx < interviewQuestions.length) {
-      aiResponse = {
-        role: "ai",
-        text: `Great answer! Here's the next question:\n\n${interviewQuestions[nextIdx]}`,
-      };
-      setInterviewQuestionIndex(nextIdx);
-    } else {
-      aiResponse = {
-        role: "ai",
-        text: `Thank you for your thoughtful responses! You've completed the interview for "${module?.title || "this module"}". You demonstrated a solid understanding of the material. Click "Complete Module" to finish.`,
-      };
-      setInterviewEnded(true);
+    setIsAiThinking(true);
+    groqHistoryRef.current = [];
+    try {
+      const res = await fetch("/api/mock_int", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "start",
+          history: [],
+          moduleTitle: module?.title || "this topic",
+        }),
+      });
+      const data = await res.json();
+      const aiText =
+        data.reply ||
+        `Let's begin. Tell me about your understanding of ${module?.title || "this topic"}.`;
+      groqHistoryRef.current = [
+        { role: "user", content: "start" },
+        { role: "assistant", content: aiText },
+      ];
+      interviewMessagesRef.current = [{ role: "ai", text: aiText }];
+      setInterviewMessages([{ role: "ai", text: aiText }]);
+      speakText(aiText);
+    } catch {
+      const fallback = `Let's begin. Tell me about your understanding of ${module?.title || "this topic"}.`;
+      interviewMessagesRef.current = [{ role: "ai", text: fallback }];
+      setInterviewMessages([{ role: "ai", text: fallback }]);
+      speakText(fallback);
+    } finally {
+      setIsAiThinking(false);
     }
-
-    setInterviewMessages((prev) => [...prev, userMsg, aiResponse]);
-    setInterviewInput("");
   };
 
   const stepType = getStepType();
@@ -439,7 +706,7 @@ export default function LessonView({ module, onBack, onComplete }) {
             key={label}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all ${
               i === step
-                ? "bg-white/10 border-white/20 text-white"
+                ? "bg-white/10 borde  r-white/20 text-white"
                 : i < step
                   ? "bg-emerald-500/15 border-emerald-500/30 text-emerald-400"
                   : "bg-white/3 border-white/8 text-gray-500"
@@ -555,111 +822,139 @@ export default function LessonView({ module, onBack, onComplete }) {
           </div>
         )}
 
-        {/* Interview slide — AI chatbot mock */}
+        {/* Interview slide — AI Voice */}
         {stepType === "interview" && (
-          <div className="bg-white/3 border border-white/8 rounded-2xl p-5 flex flex-col">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center">
-                <svg
-                  className="w-4 h-4 text-emerald-400"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"
-                  />
-                </svg>
-              </div>
-              <div>
-                <h3 className="text-sm font-medium text-white">AI Interview</h3>
-                <p className="text-xs text-gray-500">
-                  Practice answering interview-style questions
-                </p>
-              </div>
-            </div>
-
+          <div className="bg-white/3 border border-white/8 rounded-2xl p-5 flex flex-col items-center justify-center min-h-80">
             {!interviewStarted ? (
-              <div className="flex flex-col items-center gap-4 pt-2">
-                <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
-                  <svg
-                    className="w-8 h-8 text-emerald-400"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
-                    />
-                  </svg>
+              /* Start screen */
+              <div className="flex flex-col items-center gap-5">
+                {/* Pulsing circle */}
+                <div className="relative flex items-center justify-center">
+                  <div
+                    className="absolute w-32 h-32 rounded-full bg-emerald-500/10 animate-ping"
+                    style={{ animationDuration: "2s" }}
+                  />
+                  <div className="w-24 h-24 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+                    <svg
+                      className="w-10 h-10 text-emerald-400"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={1.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
+                      />
+                    </svg>
+                  </div>
                 </div>
-                <p className="text-sm text-gray-400 text-center max-w-sm">
-                  Ready for a mock interview? The AI will ask you{" "}
-                  {interviewQuestions.length} questions about{" "}
+                <p className="text-sm text-gray-400 text-center max-w-xs">
+                  AI voice interview on{" "}
                   <span className="text-white font-medium">
                     {module?.title}
                   </span>
-                  .
+                  . Just speak naturally.
                 </p>
                 <button
                   onClick={startInterview}
                   className="px-6 py-2.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-sm font-medium hover:bg-emerald-500/30 transition"
                 >
-                  Start Interview
+                  Begin
+                </button>
+              </div>
+            ) : interviewEnded ? (
+              /* Done */
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+                  <svg
+                    className="w-7 h-7 text-emerald-400"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M5 13l4 4L19 7"
+                    />
+                  </svg>
+                </div>
+                <p className="text-xs text-emerald-400/70">
+                  Interview complete — click Next
+                </p>
+                <button
+                  onClick={resetInterview}
+                  className="mt-1 px-5 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-gray-400 hover:bg-white/10 hover:text-white transition-all"
+                >
+                  Reattempt Interview
                 </button>
               </div>
             ) : (
-              <>
-                {/* Chat messages */}
-                <div className="interview-messages flex-1 min-h-0 overflow-y-auto space-y-3 mb-4">
-                  {interviewMessages.map((msg, i) => (
-                    <div
-                      key={i}
-                      className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-                    >
-                      <div
-                        className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap ${
-                          msg.role === "user"
-                            ? "bg-emerald-500/15 border border-emerald-500/30 text-emerald-100 rounded-br-md"
-                            : "bg-white/5 border border-white/10 text-gray-300 rounded-bl-md"
-                        }`}
-                      >
-                        {msg.text}
+              /* Active interview — central circle only */
+              <div className="flex flex-col items-center gap-6 w-full">
+                <div className="relative flex items-center justify-center w-full">
+                  {/* Outer ring — active when AI speaks or user speaks */}
+                  <div
+                    className={`absolute rounded-full transition-all duration-500 ${
+                      isAiSpeaking
+                        ? "w-44 h-44 bg-emerald-500/10 animate-ping"
+                        : isListening
+                          ? "w-44 h-44 bg-rose-500/10 animate-ping"
+                          : "w-36 h-36 bg-white/3"
+                    }`}
+                    style={{ animationDuration: "1s" }}
+                  />
+                  {/* Middle ring */}
+                  <div
+                    className={`absolute rounded-full transition-all duration-300 ${
+                      isAiSpeaking
+                        ? "w-36 h-36 bg-emerald-500/15 border border-emerald-500/20"
+                        : isListening
+                          ? "w-36 h-36 bg-rose-500/15 border border-rose-500/20"
+                          : "w-28 h-28 bg-white/5 border border-white/10"
+                    }`}
+                  />
+                  {/* Inner circle */}
+                  <div
+                    className={`relative w-24 h-24 rounded-full flex items-center justify-center transition-all duration-300 border ${
+                      isAiSpeaking
+                        ? "bg-emerald-500/20 border-emerald-500/40"
+                        : isListening
+                          ? "bg-rose-500/20 border-rose-500/40"
+                          : isAiThinking
+                            ? "bg-white/8 border-white/15"
+                            : "bg-white/5 border-white/10"
+                    }`}
+                  >
+                    {isAiThinking ? (
+                      <div className="flex gap-1 items-end">
+                        {[0, 150, 300].map((d) => (
+                          <span
+                            key={d}
+                            className="w-1.5 h-1.5 bg-gray-400 rounded-full animate-bounce"
+                            style={{ animationDelay: `${d}ms` }}
+                          />
+                        ))}
                       </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Input area */}
-                {!interviewEnded ? (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={interviewInput}
-                      onChange={(e) => setInterviewInput(e.target.value)}
-                      onKeyDown={(e) =>
-                        e.key === "Enter" && sendInterviewMessage()
-                      }
-                      placeholder="Type your answer..."
-                      className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-emerald-500/40 transition"
-                    />
-                    <button
-                      onClick={sendInterviewMessage}
-                      disabled={!interviewInput.trim()}
-                      className={`px-4 py-2.5 rounded-xl border text-sm font-medium transition-all ${
-                        interviewInput.trim()
-                          ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/30"
-                          : "bg-white/3 border-white/8 text-gray-600 cursor-not-allowed"
-                      }`}
-                    >
+                    ) : isAiSpeaking ? (
+                      <div className="flex gap-0.5 items-end h-5">
+                        {[50, 100, 70, 90, 55, 80, 60].map((h, i) => (
+                          <span
+                            key={i}
+                            className="w-0.5 bg-emerald-400 rounded-full animate-pulse"
+                            style={{
+                              height: `${h}%`,
+                              animationDelay: `${i * 60}ms`,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ) : isListening ? (
                       <svg
-                        className="w-4 h-4"
+                        className="w-7 h-7 text-rose-400"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -668,19 +963,64 @@ export default function LessonView({ module, onBack, onComplete }) {
                         <path
                           strokeLinecap="round"
                           strokeLinejoin="round"
-                          d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"
+                          d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
                         />
                       </svg>
-                    </button>
+                    ) : (
+                      <svg
+                        className="w-7 h-7 text-gray-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z"
+                        />
+                      </svg>
+                    )}
                   </div>
-                ) : (
-                  <div className="text-center py-2">
-                    <p className="text-xs text-emerald-400/70">
-                      Interview complete — click Next to see your feedback
-                    </p>
-                  </div>
-                )}
-              </>
+                </div>
+                {/* End interview button */}
+                <button
+                  onClick={() => {
+                    if (sendDelayRef.current) {
+                      clearTimeout(sendDelayRef.current);
+                      sendDelayRef.current = null;
+                    }
+                    // Stop TTS — call twice because Chrome sometimes ignores the first cancel()
+                    window.speechSynthesis.pause();
+                    window.speechSynthesis.cancel();
+                    setTimeout(() => window.speechSynthesis.cancel(), 50);
+                    // Stop mic
+                    const activeRec = recognitionRef.current;
+                    recognitionRef.current = null;
+                    if (activeRec)
+                      try {
+                        activeRec.stop();
+                      } catch (_) {}
+                    // Clear all timers and flags
+                    if (sendDelayRef.current) {
+                      clearTimeout(sendDelayRef.current);
+                      sendDelayRef.current = null;
+                    }
+                    interruptRecognitionRef.current = null;
+                    isAiSpeakingRef.current = false;
+                    isSendingRef.current = false;
+                    interviewEndedRef.current = true;
+                    setIsAiSpeaking(false);
+                    setIsListening(false);
+                    setInterviewEnded(true);
+                    generateFeedback();
+                    setStep((prev) => prev + 1);
+                  }}
+                  className="relative z-10 mt-6 px-5 py-2 rounded-lg bg-white/5 border border-white/10 text-xs text-gray-400 hover:bg-rose-500/10 hover:border-rose-500/30 hover:text-rose-400 transition-all"
+                >
+                  End Interview
+                </button>
+              </div>
             )}
           </div>
         )}
@@ -721,8 +1061,7 @@ export default function LessonView({ module, onBack, onComplete }) {
               </div>
               <div className="bg-white/3 border border-white/8 rounded-xl p-4 text-center">
                 <p className="text-2xl font-bold text-white">
-                  {feedback.interviewStats.questionsAnswered}/
-                  {interviewQuestions.length}
+                  {feedback.interviewStats.questionsAnswered}/4
                 </p>
                 <p className="text-xs text-gray-500 mt-1">
                   Interview Questions (avg {feedback.interviewStats.avgWords}{" "}
@@ -730,6 +1069,89 @@ export default function LessonView({ module, onBack, onComplete }) {
                 </p>
               </div>
             </div>
+
+            {/* Behavioral signals */}
+            {feedback.behavioralStats && (
+              <div className="grid grid-cols-3 gap-2">
+                <div className="bg-white/3 border border-white/8 rounded-xl p-3 text-center">
+                  <p
+                    className={`text-2xl font-bold ${
+                      feedback.behavioralStats.interruptions === 0
+                        ? "text-emerald-400"
+                        : feedback.behavioralStats.interruptions <= 2
+                          ? "text-amber-400"
+                          : "text-rose-400"
+                    }`}
+                  >
+                    {feedback.behavioralStats.interruptions}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Interruptions</p>
+                </div>
+                <div className="bg-white/3 border border-white/8 rounded-xl p-3 text-center">
+                  <p
+                    className={`text-2xl font-bold ${
+                      feedback.behavioralStats.hesitations === 0
+                        ? "text-emerald-400"
+                        : feedback.behavioralStats.hesitations <= 3
+                          ? "text-amber-400"
+                          : "text-rose-400"
+                    }`}
+                  >
+                    {feedback.behavioralStats.hesitations}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Fillers</p>
+                </div>
+                <div className="bg-white/3 border border-white/8 rounded-xl p-3 text-center">
+                  <p
+                    className={`text-2xl font-bold ${
+                      (feedback.behavioralStats.pauses ?? 0) <= 1
+                        ? "text-emerald-400"
+                        : (feedback.behavioralStats.pauses ?? 0) <= 4
+                          ? "text-amber-400"
+                          : "text-rose-400"
+                    }`}
+                  >
+                    {feedback.behavioralStats.pauses ?? 0}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1">Pauses</p>
+                </div>
+              </div>
+            )}
+
+            {/* Soft skill ratings */}
+            {feedback.softSkills && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-400 mb-3 uppercase tracking-wider">
+                  Soft Skills
+                </h4>
+                <div className="space-y-3">
+                  {feedback.softSkills.map(({ label, score }) => (
+                    <div key={label}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs text-gray-300">{label}</span>
+                        <span className="text-xs text-gray-500">{score}/5</span>
+                      </div>
+                      <div className="flex gap-1">
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <div
+                            key={n}
+                            className={`flex-1 h-1.5 rounded-full ${
+                              n <= score
+                                ? score >= 4
+                                  ? "bg-emerald-500"
+                                  : score >= 3
+                                    ? "bg-amber-500"
+                                    : "bg-rose-500"
+                                : "bg-white/10"
+                            }`}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Strengths */}
             <div>
