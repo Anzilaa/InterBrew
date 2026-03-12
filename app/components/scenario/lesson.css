@@ -45,6 +45,24 @@
   border-radius: 12px;
 }
 
+.interview-messages {
+  max-height: 36vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(52, 211, 153, 0.2) transparent;
+}
+
+.interview-messages::-webkit-scrollbar {
+  width: 3px;
+}
+.interview-messages::-webkit-scrollbar-track {
+  background: transparent;
+}
+.interview-messages::-webkit-scrollbar-thumb {
+  background: rgba(52, 211, 153, 0.2);
+  border-radius: 999px;
+}
+
 .quiz-option {
   transition: all 0.2s ease;
 }
